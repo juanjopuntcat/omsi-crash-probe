@@ -11,6 +11,7 @@ build-*/
 
 # Runtime logs and local session reports
 *.log
+!tests/fixtures/*.log
 probe*.txt
 last-crash-session-analysis.md
 static-error-summary.md

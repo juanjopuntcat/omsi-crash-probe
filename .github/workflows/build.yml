@@ -16,6 +16,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Test session analyzer fixtures
+        shell: powershell
+        run: .\Test-AnalyzeOmsiCrashSession.ps1
+
       - name: Configure CMake
         run: cmake -S . -B build-x86 -A Win32
 

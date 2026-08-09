@@ -1,0 +1,10 @@
+OmsiCrashProbe PluginStart
+MemorySnapshot time="2026-08-09 12:00:00.000" reason="PluginStart" privateKB=524288 workingSetKB=600000 peakWorkingSetKB=600000 pagefileKB=524288 commitAvailMB=8000 physAvailMB=6000 vasFreeMB=2048 vasLargestFreeMB=1024 gdiObjects=100 userObjects=80 countersOk=1 systemOk=1
+MemorySnapshot time="2026-08-09 12:00:02.000" reason="DelphiException occurrence=1" privateKB=1468006 workingSetKB=1500000 peakWorkingSetKB=1500000 pagefileKB=1468006 commitAvailMB=7000 physAvailMB=5000 vasFreeMB=64 vasLargestFreeMB=16 gdiObjects=320 userObjects=300 countersOk=1 systemOk=1 vasFreeRanges=120 vasTopFreeMB=16,8,4 vasCommitPrivateMB=1433 vasCommitMappedMB=40 vasCommitImageMB=120 vasCommittedRegions=900 vasReservedRegions=80 vasReservedMB=384 vasTopReservedMB=128,64,32 vasPrivateRegions=600 vasMappedRegions=100 vasImageRegions=200
+VasThresholdCrossed time="2026-08-09 12:00:02.000" thresholdMB=256 largestFreeMB=16 freeMB=64 privateKB=1468006 gdiObjects=320 userObjects=300 reason="DelphiException occurrence=1"
+[2026-08-09 12:00:02.100] exception=DelphiException occurrence=1 code=0x0EEDFADE address=0x75AA0000 module=KERNELBASE.dll base=0x75A00000 rva=0x000A0000 flags=0x00000001 params=7
+  known-rva source=stack esp+0x10 rva=0x003D620D system="CV.Calculate J2 checkpoint" callerContext=important note="synthetic"
+Exception signature summary:
+  count=25 code=DelphiException/0x0EEDFADE raiseRva=0x000A0000 p0=0x00000000 p2=0x00000008 omsi1=0x003D620D omsi2=0x0002A000 first="2026-08-09 12:00:02.100" last="2026-08-09 12:00:05.000"
+    known omsi1="CV.Calculate J2 checkpoint" omsi2="Delphi system-error raiser"
+OmsiCrashProbe PluginFinalize

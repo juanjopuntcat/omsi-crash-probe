@@ -1,0 +1,13 @@
+1 12:00:00 -  -       Information: Refresh Tile: 10, maps\Synthetic\tile_0_0.map ...
+2 12:00:01 -  -     Warning: Attention: PhysObj tries to load another collision mesh without unloading the previous one! (Sceneryobjects\Synthetic\mesh.o3d)
+3 12:00:02 -  -   Error: Systemfehler. Code: 8. Not enough memory resources are available to process this command
+4 12:00:02 -  -   Error: CV.Calculate - J2 (Vehicles\Synthetic\bus.bus)
+5 12:00:03 -  -   Error: Systemfehler. Code: 8. Not enough memory resources are available to process this command
+6 12:00:03 -  -   Error: map.translate
+7 12:00:04 -  -   Error: Systemfehler. Code: 8. Not enough memory resources are available to process this command
+8 12:00:04 -  -   Error: TUV 33
+9 12:00:05 -  -   Error: Systemfehler. Code: 8. Not enough memory resources are available to process this command
+10 12:00:05 -  -   Error: P.KillNotNeededBuses
+11 12:00:06 -  -   Error: Texture "Synthetic\texture.dds" failed!
+12 12:00:06 -  -   Error: Texturladen - Direct9 Error: E_OUTOFMEMORY
+13 12:00:07 -  -   Error: Direct-3D-Device-Reset schlug fehl, Fehler: D3DERR_INVALIDCALL

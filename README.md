@@ -62,6 +62,8 @@ Newer snapshots also include a compact VAS layout summary: the number of free
 ranges, the top three free block sizes, committed region counts, and committed
 private/mapped/image megabytes. This makes fragmentation visible without dumping
 the full address map.
+Current snapshots additionally report total reserved VAS, the top three
+reserved block sizes, and private/mapped/image committed-region counts.
 Each session also records the first observed crossing of the 256, 128, 64, 32,
 and 16 MB largest-free-block thresholds without performing extra VAS scans.
 
@@ -75,6 +77,16 @@ builds a combined "top suspicious signals" table across `logfile.txt` and
 `probe.log`. These labels are triage hints that should be cross-checked against
 RVAs, stack candidates, and memory snapshots.
 
+Run the offline analyzer regression fixtures with:
+
+```powershell
+.\Test-AnalyzeOmsiCrashSession.ps1
+```
+
+The fixtures cover Code 8 ownership buckets and precursors, Direct3D/texture
+errors, old and current VAS snapshot formats, threshold crossings, and KnownRVA
+signature labels. The GitHub build workflow runs the same suite.
+
 The current investigation map lives in `known-error-roadmap.md`. It lists which
 common OMSI error families already have static RVA anchors and which ones still
 need focused Ghidra passes.
@@ -85,6 +97,8 @@ used to sharpen audio crash attribution.
 `ghidra-map-vehicle-notes.md` separates the `CV.Calculate - J2`,
 `map.translate`, AI cleanup, and map refresh checkpoints observed around VAS
 exhaustion.
+`ghidra-resource-lifecycle-notes.md` maps PhysObj collision load/unload,
+Direct3D texture creation/release, and Delphi VirtualAlloc/VirtualFree paths.
 
 Known RVA labels are context hints only. For example, an exception inside a
 Delphi managed-string helper usually means the useful owner is the caller that

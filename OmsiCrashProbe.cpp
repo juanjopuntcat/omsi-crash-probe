@@ -78,7 +78,14 @@ struct AddressSpaceSnapshot {
     unsigned long long privateCommitBytes;
     unsigned long long mappedCommitBytes;
     unsigned long long imageCommitBytes;
+    unsigned long long reservedBytes;
+    unsigned long long largestReservedBytes;
+    unsigned long long secondLargestReservedBytes;
+    unsigned long long thirdLargestReservedBytes;
     unsigned long long freeRangeCount;
+    unsigned long long privateCommittedRegionCount;
+    unsigned long long mappedCommittedRegionCount;
+    unsigned long long imageCommittedRegionCount;
     unsigned long long committedRegionCount;
     unsigned long long reservedRegionCount;
 };
@@ -138,6 +145,21 @@ static void AddFreeRegionSize(AddressSpaceSnapshot* snapshot, unsigned long long
     }
 }
 
+static void AddReservedRegionSize(AddressSpaceSnapshot* snapshot, unsigned long long regionSize) {
+    if (regionSize > snapshot->largestReservedBytes) {
+        snapshot->thirdLargestReservedBytes = snapshot->secondLargestReservedBytes;
+        snapshot->secondLargestReservedBytes = snapshot->largestReservedBytes;
+        snapshot->largestReservedBytes = regionSize;
+    }
+    else if (regionSize > snapshot->secondLargestReservedBytes) {
+        snapshot->thirdLargestReservedBytes = snapshot->secondLargestReservedBytes;
+        snapshot->secondLargestReservedBytes = regionSize;
+    }
+    else if (regionSize > snapshot->thirdLargestReservedBytes) {
+        snapshot->thirdLargestReservedBytes = regionSize;
+    }
+}
+
 // Walk the current 32-bit process address space and measure free virtual
 // address ranges. This is more expensive than reading process counters, so it
 // is only called for startup/shutdown and selected full exception captures.
@@ -171,16 +193,22 @@ static AddressSpaceSnapshot QueryAddressSpaceSnapshot() {
             snapshot.committedRegionCount += 1;
             if (mbi.Type == MEM_IMAGE) {
                 snapshot.imageCommitBytes += regionSize;
+                snapshot.imageCommittedRegionCount += 1;
             }
             else if (mbi.Type == MEM_MAPPED) {
                 snapshot.mappedCommitBytes += regionSize;
+                snapshot.mappedCommittedRegionCount += 1;
             }
             else if (mbi.Type == MEM_PRIVATE) {
                 snapshot.privateCommitBytes += regionSize;
+                snapshot.privateCommittedRegionCount += 1;
             }
         }
         else if (mbi.State == MEM_RESERVE) {
+            unsigned long long regionSize = static_cast<unsigned long long>(mbi.RegionSize);
+            snapshot.reservedBytes += regionSize;
             snapshot.reservedRegionCount += 1;
+            AddReservedRegionSize(&snapshot, regionSize);
         }
 
         if (next <= address) {
@@ -216,11 +244,11 @@ static void LogMemorySnapshot(const char* reason) {
     char timestamp[64] = {};
     FormatSystemTime(now, timestamp, sizeof(timestamp));
 
-    char line[1536] = {};
+    char line[2048] = {};
     snprintf(
         line,
         sizeof(line),
-        "MemorySnapshot time=\"%s\" reason=\"%s\" privateKB=%llu workingSetKB=%llu peakWorkingSetKB=%llu pagefileKB=%llu commitAvailMB=%llu physAvailMB=%llu vasFreeMB=%llu vasLargestFreeMB=%llu gdiObjects=%lu userObjects=%lu countersOk=%lu systemOk=%lu vasFreeRanges=%llu vasTopFreeMB=%llu,%llu,%llu vasCommitPrivateMB=%llu vasCommitMappedMB=%llu vasCommitImageMB=%llu vasCommittedRegions=%llu vasReservedRegions=%llu",
+        "MemorySnapshot time=\"%s\" reason=\"%s\" privateKB=%llu workingSetKB=%llu peakWorkingSetKB=%llu pagefileKB=%llu commitAvailMB=%llu physAvailMB=%llu vasFreeMB=%llu vasLargestFreeMB=%llu gdiObjects=%lu userObjects=%lu countersOk=%lu systemOk=%lu vasFreeRanges=%llu vasTopFreeMB=%llu,%llu,%llu vasCommitPrivateMB=%llu vasCommitMappedMB=%llu vasCommitImageMB=%llu vasCommittedRegions=%llu vasReservedRegions=%llu vasReservedMB=%llu vasTopReservedMB=%llu,%llu,%llu vasPrivateRegions=%llu vasMappedRegions=%llu vasImageRegions=%llu",
         timestamp,
         reason ? reason : "<unknown>",
         hasProcessMemory ? BytesToKB(static_cast<unsigned long long>(processMemory.PrivateUsage)) : 0ULL,
@@ -243,7 +271,14 @@ static void LogMemorySnapshot(const char* reason) {
         BytesToMB(addressSpace.mappedCommitBytes),
         BytesToMB(addressSpace.imageCommitBytes),
         addressSpace.committedRegionCount,
-        addressSpace.reservedRegionCount);
+        addressSpace.reservedRegionCount,
+        BytesToMB(addressSpace.reservedBytes),
+        BytesToMB(addressSpace.largestReservedBytes),
+        BytesToMB(addressSpace.secondLargestReservedBytes),
+        BytesToMB(addressSpace.thirdLargestReservedBytes),
+        addressSpace.privateCommittedRegionCount,
+        addressSpace.mappedCommittedRegionCount,
+        addressSpace.imageCommittedRegionCount);
     AppendLine(line);
 
     // Threshold records make the first observed transition into severe VAS
@@ -620,6 +655,8 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x00024F68, 0x00024FA9, "String-to-float parser", "Candidate for invalid Gleitkommawert / decimal parsing errors.", true},
     {0x00028E06, 0x00028E1E, "Delphi external exception constructor", "Builds Externe Exception %x resource-backed exception objects; caller context owns the useful diagnosis.", true},
     {0x00028EA4, 0x00028EB6, "Delphi out-of-memory exception constructor", "Constructs the Zu wenig Arbeitsspeicher resource-backed exception object.", true},
+    {0x00003034, 0x00003183, "Delphi virtual-memory resize path", "Extends or relocates allocator blocks with VirtualAlloc reserve/commit operations.", true},
+    {0x00003508, 0x000036D0, "Delphi virtual-memory free path", "Coalesces allocator blocks and releases complete VirtualAlloc regions with VirtualFree.", true},
     {0x0002A000, 0x0002A09E, "Delphi system-error raiser", "Uses GetLastError and raises Systemfehler / OS error exceptions such as Code 8.", true},
     {0x0002ADCC, 0x0002C81F, "Delphi range-check string/list helper cluster", "Constructs ERangeError for negative index, upper-bound, and slice/length violations in Delphi collection/string helpers.", true},
     {0x00030ADC, 0x00030CF9, "Delphi resource exception constructor path", "Builds localized resource-backed exception objects, including Zu wenig Arbeitsspeicher variants.", false},
@@ -662,6 +699,10 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x003922A0, 0x00395FCF, "High-volume numeric parser cluster D", "Large parser cluster with repeated indexed float-field writes.", false},
     {0x0039C9D0, 0x0039CC29, "TMap.RefreshObjectsKacheln object update path", "Nested map-object refresh path; selects list entries, converts one value through the Delphi conversion wrapper, and updates referenced object state.", false},
     {0x0039CC30, 0x0039EDD0, "TMap.RefreshObjectsKacheln", "Large map-object tile refresh/update loop; static strings include TMap.RefreshObjectsKacheln IDCode diagnostics.", false},
+    {0x003AB110, 0x003AB18F, "Collision owner unload path", "Destroys ODE geometry and trimesh data, then frees owner vertex/index buffers.", false},
+    {0x003AB190, 0x003AB3FF, "Collision owner build path", "Creates ODE trimesh data and builds owner vertex/index buffers.", false},
+    {0x003AE554, 0x003AE5D0, "PhysObj collision unload path", "Destroys PhysObj ODE trimesh data, frees both mesh buffers, and clears their fields.", false},
+    {0x003AE8E0, 0x003AEC00, "PhysObj collision load path", "Loads PhysObj collision buffers only when both fields are null; otherwise emits the duplicate collision-mesh warning.", false},
     {0x0039F6B4, 0x0039F7A9, "Texture load error wrapper", "Labels operation as texture load and formats Direct9 errors.", false},
     {0x003B432C, 0x003B90B0, "High-volume numeric parser cluster E", "Second-largest decompiled string-to-float caller cluster.", false},
     {0x003BB224, 0x003BBDE1, "Script texture validation path", "Contains invalid [scripttexture] entry reporting.", false},
@@ -669,6 +710,9 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x003D61F8, 0x003D6221, "CV.Calculate J2 checkpoint", "Narrow guarded stage that emits CV.Calculate - J2 when its enclosed vehicle calculation raises an exception.", true},
     {0x003D5374, 0x003D8B20, "CV.Calculate vehicle calculation", "Large vehicle calculation routine containing checkpoints A through Y and repeated guarded subsystem updates.", false},
     {0x003F891C, 0x003F933B, "ANSI texture/image load path", "Calls D3DXGetImageInfoFromFileA and D3DXCreateTextureFromFileExA.", false},
+    {0x003F7258, 0x003F72B0, "Texture unused-entry sweep", "Walks texture records and releases entries not marked as retained.", false},
+    {0x003F9C48, 0x003F9DB5, "Texture COM release path", "Calls COM Release, reports residual refcounts, clears the texture record, and resets state flags.", false},
+    {0x003F9E30, 0x003F9F40, "Texture manager cleanup pass", "Walks texture records and invokes the central texture release path for eligible entries.", false},
     {0x003FCC08, 0x003FCC2F, "Texture stage limit guard", "Raises/logs Too high texture stage index when a stage counter reaches 8.", true},
     {0x004029AC, 0x00402B80, "Direct9 error formatter", "Builds Direct9 Error text through DXGetErrorString9W.", false},
     {0x00405E32, 0x00405F1B, "WAV chunk validation path", "Formats RIFF/fmt/data chunk search errors while loading WAV sound data.", true},

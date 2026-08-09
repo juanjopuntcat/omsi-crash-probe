@@ -658,7 +658,7 @@ function Analyze-ProbeLog {
             Add-Count $result.Modules $Matches.name
         }
 
-        if ($line -match '^MemorySnapshot(?: time="(?<time>[^"]+)")? reason="(?<reason>[^"]+)" privateKB=(?<private>\d+) workingSetKB=(?<working>\d+) peakWorkingSetKB=(?<peak>\d+) pagefileKB=(?<pagefile>\d+) commitAvailMB=(?<commit>\d+) physAvailMB=(?<phys>\d+) vasFreeMB=(?<vasfree>\d+) vasLargestFreeMB=(?<largest>\d+) gdiObjects=(?<gdi>\d+) userObjects=(?<user>\d+)(?: countersOk=\d+ systemOk=\d+)?(?: vasFreeRanges=(?<freeranges>\d+) vasTopFreeMB=(?<top1>\d+),(?<top2>\d+),(?<top3>\d+) vasCommitPrivateMB=(?<commitprivate>\d+) vasCommitMappedMB=(?<commitmapped>\d+) vasCommitImageMB=(?<commitimage>\d+) vasCommittedRegions=(?<committedregions>\d+) vasReservedRegions=(?<reservedregions>\d+))?') {
+        if ($line -match '^MemorySnapshot(?: time="(?<time>[^"]+)")? reason="(?<reason>[^"]+)" privateKB=(?<private>\d+) workingSetKB=(?<working>\d+) peakWorkingSetKB=(?<peak>\d+) pagefileKB=(?<pagefile>\d+) commitAvailMB=(?<commit>\d+) physAvailMB=(?<phys>\d+) vasFreeMB=(?<vasfree>\d+) vasLargestFreeMB=(?<largest>\d+) gdiObjects=(?<gdi>\d+) userObjects=(?<user>\d+)(?: countersOk=\d+ systemOk=\d+)?(?: vasFreeRanges=(?<freeranges>\d+) vasTopFreeMB=(?<top1>\d+),(?<top2>\d+),(?<top3>\d+) vasCommitPrivateMB=(?<commitprivate>\d+) vasCommitMappedMB=(?<commitmapped>\d+) vasCommitImageMB=(?<commitimage>\d+) vasCommittedRegions=(?<committedregions>\d+) vasReservedRegions=(?<reservedregions>\d+)(?: vasReservedMB=(?<reservedmb>\d+) vasTopReservedMB=(?<reservedtop1>\d+),(?<reservedtop2>\d+),(?<reservedtop3>\d+) vasPrivateRegions=(?<privateregions>\d+) vasMappedRegions=(?<mappedregions>\d+) vasImageRegions=(?<imageregions>\d+))?)?') {
             $snapshotTime = if ($Matches.ContainsKey('time')) { $Matches.time } else { '' }
             $snapshot = [pscustomobject]@{
                 Time = $snapshotTime
@@ -683,6 +683,13 @@ function Analyze-ProbeLog {
                 VasCommitImageMB = Get-OptionalUInt64 $Matches 'commitimage'
                 VasCommittedRegions = Get-OptionalUInt64 $Matches 'committedregions'
                 VasReservedRegions = Get-OptionalUInt64 $Matches 'reservedregions'
+                VasReservedMB = Get-OptionalUInt64 $Matches 'reservedmb'
+                VasTopReserved1MB = Get-OptionalUInt64 $Matches 'reservedtop1'
+                VasTopReserved2MB = Get-OptionalUInt64 $Matches 'reservedtop2'
+                VasTopReserved3MB = Get-OptionalUInt64 $Matches 'reservedtop3'
+                VasPrivateRegions = Get-OptionalUInt64 $Matches 'privateregions'
+                VasMappedRegions = Get-OptionalUInt64 $Matches 'mappedregions'
+                VasImageRegions = Get-OptionalUInt64 $Matches 'imageregions'
             }
             $result.MemorySnapshots.Add($snapshot)
             continue
@@ -972,6 +979,12 @@ function New-VasPressureRows {
             else {
                 ''
             }
+            $topReserved = if ($_.VasTopReserved1MB -gt 0 -or $_.VasTopReserved2MB -gt 0 -or $_.VasTopReserved3MB -gt 0) {
+                "$($_.VasTopReserved1MB),$($_.VasTopReserved2MB),$($_.VasTopReserved3MB)"
+            }
+            else {
+                ''
+            }
 
             [pscustomobject]@{
                 Time = $_.Time
@@ -984,6 +997,9 @@ function New-VasPressureRows {
                 CommitPrivateMB = if ($_.VasCommitPrivateMB -gt 0) { $_.VasCommitPrivateMB } else { '' }
                 CommitMappedMB = if ($_.VasCommitMappedMB -gt 0) { $_.VasCommitMappedMB } else { '' }
                 CommitImageMB = if ($_.VasCommitImageMB -gt 0) { $_.VasCommitImageMB } else { '' }
+                ReservedMB = if ($_.VasReservedMB -gt 0) { $_.VasReservedMB } else { '' }
+                TopReservedMB = $topReserved
+                RegionTypes = if ($_.VasPrivateRegions -gt 0 -or $_.VasMappedRegions -gt 0 -or $_.VasImageRegions -gt 0) { "$($_.VasPrivateRegions)/$($_.VasMappedRegions)/$($_.VasImageRegions)" } else { '' }
                 GdiObjects = $_.GdiObjects
                 UserObjects = $_.UserObjects
             }
@@ -1241,7 +1257,7 @@ else {
 
     $lines.Add('### VAS pressure snapshots')
     $lines.Add('')
-    Add-MarkdownTable $lines @('Time', 'Reason', 'PrivateMB', 'FreeVasMB', 'LargestFreeVasMB', 'TopFreeVasMB', 'FreeRanges', 'CommitPrivateMB', 'CommitMappedMB', 'CommitImageMB', 'GdiObjects', 'UserObjects') (New-VasPressureRows $probeSummary.MemorySnapshots $Top)
+    Add-MarkdownTable $lines @('Time', 'Reason', 'PrivateMB', 'FreeVasMB', 'LargestFreeVasMB', 'TopFreeVasMB', 'FreeRanges', 'CommitPrivateMB', 'CommitMappedMB', 'CommitImageMB', 'ReservedMB', 'TopReservedMB', 'RegionTypes', 'GdiObjects', 'UserObjects') (New-VasPressureRows $probeSummary.MemorySnapshots $Top)
 
     $lines.Add('### VAS threshold crossings')
     $lines.Add('')

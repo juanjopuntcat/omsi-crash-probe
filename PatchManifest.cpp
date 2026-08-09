@@ -210,11 +210,16 @@ bool ParsePatchManifest(const std::string& jsonText, PatchManifest* manifest, st
         PatchManifest parsed;
         parsed.schemaVersion = 1;
         std::set<std::string> ids;
+        std::set<uint32_t> rvas;
         for (const Json& value : *patches) {
             ManifestPatch patch;
             if (!ParseEntry(value, &patch, error)) return false;
             if (!ids.insert(patch.id).second) {
                 SetError(error, "Duplicate patch ID: " + patch.id);
+                return false;
+            }
+            if (!rvas.insert(patch.rva).second) {
+                SetError(error, "Duplicate patch RVA");
                 return false;
             }
             parsed.patches.push_back(std::move(patch));

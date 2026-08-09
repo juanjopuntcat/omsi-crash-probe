@@ -36,15 +36,16 @@ matches the approved original. Offline tests exercise the full transaction and
 reject repeat application, unsafe IDs, and unexpected bytes.
 
 The native manifest reader uses vendored `nlohmann/json` 3.12.0 and accepts only
-schema version 1. It rejects unknown keys, duplicate IDs, absolute/traversing
+schema version 1. It rejects unknown keys, duplicate IDs or RVAs, absolute/traversing
 targets, malformed hashes, unbounded hexadecimal values, malformed byte
 sequences, irreversible entries, and replacement-length changes. Compatibility
 requires SHA-256, PE timestamp, and image size to agree.
 
-Mutation primitives are not exposed by the CLI or GUI yet. UI code must never
-construct patch offsets or replacement bytes itself; the next gate is binding
-validated manifest entries to selectable bug rows and an explicit confirmation
-dialog.
+The GUI binds validated entries to bug rows by unique RVA and exposes one
+operation at a time. It derives targets from the selected OMSI root, revalidates
+the approved original immediately before Apply or Rollback, shows the target and
+backup in an explicit confirmation, and refuses mutation while `Omsi.exe` is
+running. UI code never constructs patch offsets or replacement bytes itself.
 
 Original game binaries, wholesale decompiler output, and copyrighted game data
 must never be committed. Releases may contain our probe, scripts, manifests, and

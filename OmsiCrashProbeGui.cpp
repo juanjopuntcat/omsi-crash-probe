@@ -13,7 +13,9 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <tlhelp32.h>
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <string>
@@ -35,6 +37,7 @@ enum ControlId {
 };
 
 struct BugEntry {
+    uint32_t rva;
     const wchar_t* title;
     const wchar_t* category;
     const wchar_t* status;
@@ -45,23 +48,23 @@ struct BugEntry {
 };
 
 constexpr std::array<BugEntry, 17> kBugs = {{
-    {L"RS.HumansOutside null list entry", L"Access violation", L"Control-flow analysis", L"High", L"0x002EFD03", L"A null list entry is read at object field +0x5BC.", false},
-    {L"World/UI missing text subobject", L"Access violation", L"Trampoline design", L"High", L"0x00428140", L"A missing +0x5C subobject is used as a UI string source.", false},
-    {L"AI cleanup missing list head", L"Access violation", L"Control-flow analysis", L"Medium", L"0x0042ADE3", L"Bus cleanup dereferences a missing global list head.", false},
-    {L"Direct3D device lost or reset", L"Direct3D", L"Documented", L"High", L"0x00429FD8", L"Device reset can fail with DEVICELOST, INVALIDCALL, or unknown HRESULT.", false},
-    {L"Direct3D texture allocation failure", L"Memory / graphics", L"Documented", L"High", L"0x0024307C", L"Texture creation fails under allocation pressure or fragmented address space.", false},
-    {L"Systemfehler Code 8", L"Memory / resources", L"Documented", L"High", L"0x0002A000", L"Windows cannot provide enough memory resources for the requested operation.", false},
-    {L"Invalid bitmap or image", L"Graphics resources", L"Documented", L"High", L"0x00070890", L"Bitmap state, extension, GDI allocation, or image validation fails.", false},
-    {L"Range-check error", L"Delphi runtime", L"Documented", L"High", L"0x0004DD85", L"An index or numeric operation violates a compiled Delphi range check.", false},
-    {L"List index exceeds maximum", L"Delphi runtime", L"Documented", L"High", L"0x000B57F4", L"A list is accessed outside its valid bounds.", false},
-    {L"Argument outside range", L"Delphi runtime", L"Documented", L"High", L"0x0011FF8C", L"A method receives an index or length outside its accepted range.", false},
-    {L"Invalid floating-point value", L"Parser", L"Documented", L"High", L"0x00024F68", L"Text input cannot be converted to the expected floating-point value.", false},
-    {L"Floating-point division by zero", L"Calculation", L"Documented", L"High", L"0x00011610", L"A vehicle or engine calculation divides by zero.", false},
-    {L"Stream read or write failure", L"File I/O", L"Documented", L"Medium-high", L"0x0004DF1C", L"A generic stream operation cannot read or write the requested data.", false},
-    {L"Invalid script variable or command", L"Script parser", L"Documented", L"High", L"0x001D378D", L"A script refers to an unknown variable, macro, constant, or function.", false},
-    {L"Map or vehicle update failure", L"Simulation", L"Documented", L"Medium", L"0x003D5374", L"Failures around map translation, tile refresh, or CV.Calculate.", false},
-    {L"DirectSound access violation", L"Audio", L"Documented", L"Medium", L"0x00405D60", L"A sound load or DirectSound buffer operation reaches invalid state.", false},
-    {L"External exception C06D007E", L"External module", L"Documented", L"Medium-low", L"0x00028E06", L"An external dependency or delayed import cannot be resolved.", false}
+    {0x002EFD03, L"RS.HumansOutside null list entry", L"Access violation", L"Control-flow analysis", L"High", L"0x002EFD03", L"A null list entry is read at object field +0x5BC.", false},
+    {0x00428140, L"World/UI missing text subobject", L"Access violation", L"Trampoline design", L"High", L"0x00428140", L"A missing +0x5C subobject is used as a UI string source.", false},
+    {0x0042ADE3, L"AI cleanup missing list head", L"Access violation", L"Control-flow analysis", L"Medium", L"0x0042ADE3", L"Bus cleanup dereferences a missing global list head.", false},
+    {0x00429FD8, L"Direct3D device lost or reset", L"Direct3D", L"Documented", L"High", L"0x00429FD8", L"Device reset can fail with DEVICELOST, INVALIDCALL, or unknown HRESULT.", false},
+    {0x0024307C, L"Direct3D texture allocation failure", L"Memory / graphics", L"Documented", L"High", L"0x0024307C", L"Texture creation fails under allocation pressure or fragmented address space.", false},
+    {0x0002A000, L"Systemfehler Code 8", L"Memory / resources", L"Documented", L"High", L"0x0002A000", L"Windows cannot provide enough memory resources for the requested operation.", false},
+    {0x00070890, L"Invalid bitmap or image", L"Graphics resources", L"Documented", L"High", L"0x00070890", L"Bitmap state, extension, GDI allocation, or image validation fails.", false},
+    {0x0004DD85, L"Range-check error", L"Delphi runtime", L"Documented", L"High", L"0x0004DD85", L"An index or numeric operation violates a compiled Delphi range check.", false},
+    {0x000B57F4, L"List index exceeds maximum", L"Delphi runtime", L"Documented", L"High", L"0x000B57F4", L"A list is accessed outside its valid bounds.", false},
+    {0x0011FF8C, L"Argument outside range", L"Delphi runtime", L"Documented", L"High", L"0x0011FF8C", L"A method receives an index or length outside its accepted range.", false},
+    {0x00024F68, L"Invalid floating-point value", L"Parser", L"Documented", L"High", L"0x00024F68", L"Text input cannot be converted to the expected floating-point value.", false},
+    {0x00011610, L"Floating-point division by zero", L"Calculation", L"Documented", L"High", L"0x00011610", L"A vehicle or engine calculation divides by zero.", false},
+    {0x0004DF1C, L"Stream read or write failure", L"File I/O", L"Documented", L"Medium-high", L"0x0004DF1C", L"A generic stream operation cannot read or write the requested data.", false},
+    {0x001D378D, L"Invalid script variable or command", L"Script parser", L"Documented", L"High", L"0x001D378D", L"A script refers to an unknown variable, macro, constant, or function.", false},
+    {0x003D5374, L"Map or vehicle update failure", L"Simulation", L"Documented", L"Medium", L"0x003D5374", L"Failures around map translation, tile refresh, or CV.Calculate.", false},
+    {0x00405D60, L"DirectSound access violation", L"Audio", L"Documented", L"Medium", L"0x00405D60", L"A sound load or DirectSound buffer operation reaches invalid state.", false},
+    {0x00028E06, L"External exception C06D007E", L"External module", L"Documented", L"Medium-low", L"0x00028E06", L"An external dependency or delayed import cannot be resolved.", false}
 }};
 
 HWND g_path = nullptr;
@@ -75,6 +78,11 @@ HWND g_fixSummary = nullptr;
 HFONT g_uiFont = nullptr;
 HFONT g_titleFont = nullptr;
 omsi_patch::PatchManifest g_manifest;
+enum class FixState { None, Incompatible, Available, Applied };
+std::array<int, kBugs.size()> g_bugPatchIndex = {};
+std::array<FixState, kBugs.size()> g_fixStates = {};
+std::wstring g_omsiRoot;
+bool g_manifestLoaded = false;
 
 std::wstring Wide(const std::string& text) {
     if (text.empty()) return {};
@@ -122,6 +130,93 @@ void PopulateBugs() {
     }
 }
 
+void SetBugStatus(size_t row, const wchar_t* status) {
+    ListView_SetItemText(g_list, static_cast<int>(row), 2, const_cast<wchar_t*>(status));
+}
+
+std::wstring SelectedPath() {
+    const int length = GetWindowTextLengthW(g_path);
+    std::wstring path(static_cast<size_t>(length + 1), L'\0');
+    GetWindowTextW(g_path, path.data(), length + 1);
+    path.resize(static_cast<size_t>(length));
+    return path;
+}
+
+std::wstring PatchTarget(const omsi_patch::ManifestPatch& patch) {
+    return (std::filesystem::path(g_omsiRoot) / patch.target).lexically_normal().wstring();
+}
+
+bool IsOmsiRunning() {
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    // Failing closed prevents mutation when Windows cannot prove OMSI is absent.
+    if (snapshot == INVALID_HANDLE_VALUE) return true;
+    PROCESSENTRY32W entry = {};
+    entry.dwSize = sizeof(entry);
+    bool running = false;
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            if (_wcsicmp(entry.szExeFile, L"Omsi.exe") == 0) {
+                running = true;
+                break;
+            }
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return running;
+}
+
+void UpdateActionButton() {
+    const int row = ListView_GetNextItem(g_list, -1, LVNI_SELECTED);
+    const FixState state = row >= 0 ? g_fixStates[static_cast<size_t>(row)] : FixState::None;
+    SetWindowTextW(g_apply, state == FixState::Applied ? L"Rollback selected fix" : L"Apply selected fix");
+    EnableWindow(g_apply, state == FixState::Available || state == FixState::Applied);
+}
+
+void ClassifyFixes() {
+    size_t available = 0;
+    size_t applied = 0;
+    for (size_t row = 0; row < kBugs.size(); ++row) {
+        g_fixStates[row] = FixState::None;
+        const int patchIndex = g_bugPatchIndex[row];
+        if (patchIndex < 0 || g_omsiRoot.empty()) {
+            SetBugStatus(row, kBugs[row].status);
+            continue;
+        }
+        const auto& patch = g_manifest.patches[static_cast<size_t>(patchIndex)];
+        const std::wstring target = PatchTarget(patch);
+        omsi_patch::PeImage targetImage;
+        omsi_patch::PatchRequest request;
+        std::string error;
+        if (omsi_patch::LoadPeImage(target, &targetImage, &error) &&
+            omsi_patch::PreparePatchRequest(patch, targetImage.identity, &request, &error) &&
+            omsi_patch::AuditPatch(target, request, &error)) {
+            g_fixStates[row] = FixState::Available;
+            SetBugStatus(row, L"Available");
+            ++available;
+            continue;
+        }
+        const std::wstring backup = omsi_patch::BackupPath(target, patch.id);
+        omsi_patch::PeImage backupImage;
+        if (omsi_patch::LoadPeImage(backup, &backupImage, &error) &&
+            omsi_patch::PreparePatchRequest(patch, backupImage.identity, &request, &error) &&
+            omsi_patch::AuditPatch(backup, request, &error) &&
+            omsi_patch::LoadPeImage(target, &targetImage, &error) &&
+            omsi_patch::BytesMatch(targetImage, request.fileOffset, request.replacementBytes)) {
+            g_fixStates[row] = FixState::Applied;
+            SetBugStatus(row, L"Applied");
+            ++applied;
+            continue;
+        }
+        g_fixStates[row] = FixState::Incompatible;
+        SetBugStatus(row, L"Incompatible");
+    }
+    wchar_t summary[200] = {};
+    swprintf_s(summary, L"%zu approved fixes in manifest  |  %zu available  |  %zu applied",
+        g_manifest.patches.size(), available, applied);
+    SetWindowTextW(g_fixSummary, summary);
+    UpdateActionButton();
+}
+
 std::wstring FindOmsiExecutable() {
     wchar_t modulePath[MAX_PATH] = {};
     if (GetModuleFileNameW(nullptr, modulePath, MAX_PATH) == 0) return {};
@@ -145,6 +240,9 @@ std::wstring FileBesideExecutable(const wchar_t* name) {
 }
 
 void LoadManifestStatus() {
+    g_bugPatchIndex.fill(-1);
+    g_fixStates.fill(FixState::None);
+    g_manifestLoaded = false;
     std::string error;
     const std::wstring path = FileBesideExecutable(L"patch-manifest.json");
     if (path.empty() || !omsi_patch::LoadPatchManifest(path, &g_manifest, &error)) {
@@ -153,6 +251,16 @@ void LoadManifestStatus() {
         EnableWindow(g_apply, FALSE);
         return;
     }
+    g_manifestLoaded = true;
+    for (size_t patchIndex = 0; patchIndex < g_manifest.patches.size(); ++patchIndex) {
+        for (size_t row = 0; row < kBugs.size(); ++row) {
+            if (g_manifest.patches[patchIndex].rva == kBugs[row].rva) {
+                g_bugPatchIndex[row] = static_cast<int>(patchIndex);
+                SetBugStatus(row, L"Fix documented");
+                break;
+            }
+        }
+    }
     wchar_t summary[160] = {};
     swprintf_s(summary, L"%zu approved fixes in manifest", g_manifest.patches.size());
     SetWindowTextW(g_fixSummary, summary);
@@ -160,17 +268,18 @@ void LoadManifestStatus() {
 }
 
 void InspectSelectedFile(HWND window) {
-    const int length = GetWindowTextLengthW(g_path);
-    std::wstring path(static_cast<size_t>(length + 1), L'\0');
-    GetWindowTextW(g_path, path.data(), length + 1);
-    path.resize(static_cast<size_t>(length));
+    const std::wstring path = SelectedPath();
+    g_omsiRoot.clear();
     omsi_patch::PeImage image;
     std::string error;
     if (!omsi_patch::LoadPeImage(path, &image, &error)) {
         SetWindowTextW(g_identity, L"Executable: invalid or unreadable PE32 file");
         SetWindowTextW(g_compatibility, Wide(error).c_str());
+        if (g_manifestLoaded) ClassifyFixes();
+        else EnableWindow(g_apply, FALSE);
         return;
     }
+    g_omsiRoot = std::filesystem::path(path).parent_path().wstring();
     wchar_t identity[256] = {};
     swprintf_s(identity, L"Executable: x86  |  %llu bytes  |  PE timestamp 0x%08X  |  LAA %s",
         static_cast<unsigned long long>(image.identity.fileSize), image.identity.timeDateStamp,
@@ -182,8 +291,50 @@ void InspectSelectedFile(HWND window) {
     } else {
         SetWindowTextW(g_compatibility, L"Compatibility: unknown executable profile. Patching remains disabled.");
     }
-    EnableWindow(g_apply, FALSE);
+    if (g_manifestLoaded) ClassifyFixes();
+    else EnableWindow(g_apply, FALSE);
     InvalidateRect(window, nullptr, TRUE);
+}
+
+void ExecuteSelectedAction(HWND window) {
+    const int row = ListView_GetNextItem(g_list, -1, LVNI_SELECTED);
+    if (row < 0 || static_cast<size_t>(row) >= kBugs.size()) return;
+    const int patchIndex = g_bugPatchIndex[static_cast<size_t>(row)];
+    const FixState state = g_fixStates[static_cast<size_t>(row)];
+    if (patchIndex < 0 || (state != FixState::Available && state != FixState::Applied)) return;
+    if (IsOmsiRunning()) {
+        MessageBoxW(window, L"Close OMSI 2 before changing any game file.", L"OMSI is running", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    const auto& patch = g_manifest.patches[static_cast<size_t>(patchIndex)];
+    const std::wstring target = PatchTarget(patch);
+    const std::wstring backup = omsi_patch::BackupPath(target, patch.id);
+    const std::wstring verb = state == FixState::Applied ? L"restore" : L"apply";
+    std::wstring prompt = L"This will " + verb + L" the approved fix:\n\n" + Wide(patch.title) +
+        L"\nID: " + Wide(patch.id) + L"\nTarget: " + target + L"\nBackup: " + backup +
+        L"\n\nOMSI must remain closed. Continue?";
+    if (MessageBoxW(window, prompt.c_str(), L"Confirm file change", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+
+    omsi_patch::PeImage original;
+    omsi_patch::PatchRequest request;
+    std::string error;
+    const std::wstring identitySource = state == FixState::Applied ? backup : target;
+    bool ok = omsi_patch::LoadPeImage(identitySource, &original, &error) &&
+        omsi_patch::PreparePatchRequest(patch, original.identity, &request, &error);
+    if (ok && state == FixState::Applied) {
+        omsi_patch::PeImage current;
+        ok = omsi_patch::LoadPeImage(target, &current, &error) &&
+            omsi_patch::BytesMatch(current, request.fileOffset, request.replacementBytes);
+        if (!ok && error.empty()) error = "Current target no longer contains the approved replacement bytes";
+    }
+    if (ok) {
+        ok = state == FixState::Applied
+            ? omsi_patch::RollbackPatch(target, request, &error)
+            : omsi_patch::ApplyPatch(target, request, &error);
+    }
+    MessageBoxW(window, ok ? (state == FixState::Applied ? L"Original file restored." : L"Fix applied successfully.")
+        : Wide(error).c_str(), ok ? L"Operation complete" : L"Operation failed", MB_OK | (ok ? MB_ICONINFORMATION : MB_ICONERROR));
+    InspectSelectedFile(window);
 }
 
 void BrowseForOmsi(HWND window) {
@@ -250,7 +401,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             AddColumn(5, 430, L"Finding");
             PopulateBugs();
             g_fixSummary = AddControl(window, L"STATIC", L"0 approved fixes available", SS_LEFT | SS_CENTERIMAGE);
-            g_apply = AddControl(window, L"BUTTON", L"Apply selected fixes", WS_TABSTOP | BS_PUSHBUTTON, IdApply);
+            g_apply = AddControl(window, L"BUTTON", L"Apply selected fix", WS_TABSTOP | BS_PUSHBUTTON, IdApply);
             EnableWindow(g_apply, FALSE);
             LoadManifestStatus();
             Layout(window);
@@ -269,6 +420,11 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         case WM_COMMAND:
             if (LOWORD(wParam) == IdBrowse) BrowseForOmsi(window);
             if (LOWORD(wParam) == IdInspect) InspectSelectedFile(window);
+            if (LOWORD(wParam) == IdApply) ExecuteSelectedAction(window);
+            return 0;
+        case WM_NOTIFY:
+            if (reinterpret_cast<NMHDR*>(lParam)->hwndFrom == g_list &&
+                reinterpret_cast<NMHDR*>(lParam)->code == LVN_ITEMCHANGED) UpdateActionButton();
             return 0;
         case WM_DESTROY:
             DeleteObject(g_uiFont);

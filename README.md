@@ -332,18 +332,21 @@ runtime so OMSI's adjacent legacy runtime DLLs cannot satisfy its dependencies.
 - SHA-256 profile compatibility and Large Address Aware status;
 - a compiled-in catalog of the documented bug families and current candidates;
 - visible fix state, confidence, RVA, and the static finding; and
-- a deliberately disabled Apply action while no approved fix exists.
+- manifest-bound Apply and Rollback actions for individually selected fixes.
 
-The shared native core already has tested audit, apply, backup, atomic replace,
-and rollback primitives. The GUI does not expose them until a native manifest
-reader can supply approved patch data without duplicating offsets in UI code.
+The shared native core provides tested audit, apply, backup, atomic replace,
+and rollback primitives. The GUI obtains every offset and byte sequence from
+the validated manifest; it never duplicates patch data in UI code.
 
 The native manifest reader now validates schema version 1 with
-`nlohmann/json` 3.12.0, rejects unknown keys and unsafe relative paths, parses
-bounded hexadecimal values and byte sequences, rejects duplicate IDs, and
-selects a patch only when SHA-256, PE timestamp, and image size all match. The
-GUI loads `patch-manifest.json` beside its executable and reports its approved
-fix count, but Apply remains disabled while the manifest is empty.
+`nlohmann/json` 3.12.0. It rejects unknown keys, unsafe relative paths,
+duplicate IDs or RVAs, malformed hexadecimal values, and invalid byte
+sequences. It selects a patch only when SHA-256, PE timestamp, and image size
+all match. The
+GUI binds entries to documented bugs by RVA, audits each target, and distinguishes
+available, applied, and incompatible fixes. Apply and Rollback require explicit
+confirmation and are blocked while OMSI is running. They remain disabled while
+the committed manifest is empty.
 
 Third-party notices and licenses are documented in `THIRD_PARTY_NOTICES.md` and
 packaged with release artifacts.

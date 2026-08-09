@@ -39,11 +39,14 @@ with the repository's existing MSVC toolchain. This avoids requiring users to
 install PowerShell modules, .NET desktop runtimes, or a browser framework. The
 PowerShell transport remains useful for development, CI, and recovery.
 
-## Implemented read-only shell
+## Implemented native patch manager
 
 Version `0.1.0.0` implements the native Win32 shell, executable selector, PE
 identity and LAA inspection, known-profile recognition, and a dense list of 17
-documented bug families. No fix is selectable yet because the approved patch
+documented bug families. Validated manifest entries bind to rows by unique RVA.
+The GUI classifies them as available, applied, or incompatible and exposes one
+confirmed Apply or Rollback operation at a time. It blocks mutation while OMSI
+is running. No action is currently selectable because the committed approved
 manifest is empty. Windows version metadata and the DPI/Common Controls
 manifest are embedded resources in `OmsiCrashProbe.exe`.
 
@@ -57,7 +60,7 @@ manifest are embedded resources in `OmsiCrashProbe.exe`.
 4. Enable Apply and Rollback only after the first patch is approved and the
    native core has parity tests against the PowerShell transport.
 
-Stage 1 is complete, including native transactional apply and rollback tests.
-The native manifest reader is also complete. The GUI loads the manifest beside
-the executable and shows its approved-fix count. It remains read-only until the
-first approved patch is available and can be bound to a selectable bug row.
+Stages 1 through 3 are complete, including native transactional apply and
+rollback tests. The manifest-to-row binding and guarded confirmation flow for
+stage 4 are implemented; the first real fix still requires its own analysis,
+approval, manifest entry, and parity tests before release.

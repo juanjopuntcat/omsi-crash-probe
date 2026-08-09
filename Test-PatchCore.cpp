@@ -181,6 +181,14 @@ int main() {
     irreversibleManifest.replace(irreversibleManifest.find("true"), 4, "false");
     ok &= Check(!omsi_patch::ParsePatchManifest(irreversibleManifest, &manifest, &error),
         "irreversible patch must fail closed");
+    std::string duplicateRvaManifest = validManifest;
+    const size_t patchStart = duplicateRvaManifest.find("{", duplicateRvaManifest.find("patches"));
+    const size_t patchEnd = duplicateRvaManifest.rfind("}", duplicateRvaManifest.rfind("}") - 1);
+    std::string duplicateEntry = duplicateRvaManifest.substr(patchStart, patchEnd - patchStart + 1);
+    duplicateEntry.replace(duplicateEntry.find("synthetic-fix"), 13, "synthetic-fix-2");
+    duplicateRvaManifest.insert(patchEnd + 1, "," + duplicateEntry);
+    ok &= Check(!omsi_patch::ParsePatchManifest(
+        duplicateRvaManifest, &manifest, &error), "duplicate patch RVA must fail closed");
     std::fprintf(stderr, "Manifest test: complete\n");
 
     if (!ok) return 1;

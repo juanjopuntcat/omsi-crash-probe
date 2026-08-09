@@ -18,6 +18,11 @@ Rollback requires that backup.
 `Test-PatchOmsiRuntime.ps1` exercises audit, apply, byte verification, backup,
 and rollback against a synthetic PE file. It never opens or modifies OMSI.
 
+`binary-profiles.json` records executable identities we have actually inspected.
+Profiles distinguish LAA-modified and unmodified executables even when their PE
+timestamp and image size agree. A known profile is evidence for compatibility,
+not by itself an approved patch.
+
 Original game binaries, wholesale decompiler output, and copyrighted game data
 must never be committed. Releases may contain our probe, scripts, manifests, and
 documentation, but not original or modified OMSI executables or DLLs.

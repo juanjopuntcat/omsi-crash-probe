@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "profiles": [
+    {
+      "id": "omsi-2-57db99a6-laa",
+      "target": "Omsi.exe",
+      "sha256": "7DAB063D1F62E73B3A2C7A6AC1921D7EDF5E5DB0FBC731481D117EEC8DE7D759",
+      "peTimeDateStamp": "0x57DB99A6",
+      "peSizeOfImage": "0x0082B000",
+      "machine": "x86",
+      "largeAddressAware": true,
+      "provenance": "Locally installed Steam executable with the LAA characteristic enabled"
+    }
+  ]
+}

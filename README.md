@@ -308,6 +308,10 @@ Audit is the default mode. Applying a future entry requires an approved SHA-256,
 matching PE identity, exact file offset, and exact original bytes. See
 `patching-design.md` and `ghidra-public-access-violation-notes.md`.
 
+`patch-candidates.json` is a separate, non-applicable research catalog. The
+planned native Windows interface is described in `gui-design.md`; it will use
+the same guarded core rather than implementing binary writes in the UI.
+
 Use this alongside Windows Error Reporting dumps for fatal crashes. The probe is
 especially useful for Delphi/logged exceptions that do not terminate the process.
 

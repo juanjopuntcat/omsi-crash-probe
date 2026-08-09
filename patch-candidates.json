@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "candidates": [
+    {
+      "id": "omsi-humans-outside-null-entry",
+      "title": "RS.HumansOutside null list entry",
+      "target": "Omsi.exe",
+      "faultRva": "0x002EFD03",
+      "knownFileOffset": "0x002EF103",
+      "confidence": "high",
+      "state": "control-flow-analysis",
+      "finding": "A list lookup can return null before the engine reads object field +0x5BC.",
+      "nextStep": "Recover the containing loop and choose the correct next-entry branch."
+    },
+    {
+      "id": "omsi-world-ui-null-subobject",
+      "title": "World/UI missing text subobject",
+      "target": "Omsi.exe",
+      "faultRva": "0x00428140",
+      "knownFileOffset": "0x00427540",
+      "confidence": "high",
+      "state": "trampoline-design",
+      "finding": "The +0x5C subobject can be null while its +0x1F0 string is copied into a UI control.",
+      "nextStep": "Return an empty Delphi string for the missing subobject without skipping later parent-object UI updates."
+    },
+    {
+      "id": "omsi-ai-cleanup-null-list-head",
+      "title": "AI cleanup missing list head",
+      "target": "Omsi.exe",
+      "faultRva": "0x0042ADE3",
+      "knownFileOffset": "0x0042A1E3",
+      "confidence": "medium",
+      "state": "control-flow-analysis",
+      "finding": "AI cleanup dereferences a global list head before comparing its +0x20 state.",
+      "nextStep": "Recover the complete bus-cleanup block and verify whether a null head should skip to car cleanup."
+    }
+  ]
+}

@@ -1,6 +1,15 @@
 $ErrorActionPreference = 'Stop'
 $root = Join-Path ([IO.Path]::GetTempPath()) ('omsi-patcher-test-' + [Guid]::NewGuid().ToString('N'))
 
+$candidateCatalog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'patch-candidates.json') -Raw | ConvertFrom-Json
+if ($candidateCatalog.schemaVersion -ne 1 -or @($candidateCatalog.candidates).Count -eq 0) {
+    throw 'Patch candidate catalog is empty or has an unsupported schema'
+}
+$binaryProfiles = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'binary-profiles.json') -Raw | ConvertFrom-Json
+if ($binaryProfiles.schemaVersion -ne 1 -or @($binaryProfiles.profiles).Count -eq 0) {
+    throw 'Binary profile catalog is empty or has an unsupported schema'
+}
+
 try {
     New-Item -ItemType Directory -Path $root | Out-Null
     $target = Join-Path $root 'Synthetic.exe'

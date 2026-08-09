@@ -82,6 +82,9 @@ need focused Ghidra passes.
 Focused Ghidra notes are kept as small project-authored markdown files. For
 example, `ghidra-weak-bucket-notes.md` documents the DirectSound/WAV subpaths
 used to sharpen audio crash attribution.
+`ghidra-map-vehicle-notes.md` separates the `CV.Calculate - J2`,
+`map.translate`, AI cleanup, and map refresh checkpoints observed around VAS
+exhaustion.
 
 Known RVA labels are context hints only. For example, an exception inside a
 Delphi managed-string helper usually means the useful owner is the caller that

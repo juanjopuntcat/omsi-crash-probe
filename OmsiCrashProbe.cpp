@@ -643,6 +643,7 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x0013AFC8, 0x0013B018, "System resources exhausted init path", "Raises Systemressourcen erschoepft after an initialization/allocation call leaves an object field null.", true},
     {0x0020AEA4, 0x0020CC14, "Argument bounds checking cluster 2", "Observed constructing EArgumentOutOfRangeException with Argument ausserhalb des Bereichs around indexed access.", false},
     {0x002D753C, 0x002D77B3, "Request not enough memory resource path", "References the Fuer diese Anforderung steht nicht genuegend Speicher zur Verfuegung resource.", true},
+    {0x002F359C, 0x002F3981, "map.translate update path", "Map translation/update routine identified from the ': map.translate' diagnostic checkpoint.", false},
     {0x002F9F89, 0x002FA083, "Texture manager memory report path", "Formats Speicherbedarf Texturmanager and related memory accounting output.", false},
     {0x001AB9B8, 0x001AEA0D, "High-volume numeric parser cluster A", "Calls the string-to-float parser repeatedly and stores parsed float fields into an object.", false},
     {0x001CE730, 0x001CFC4F, "High-volume numeric parser cluster B", "Repeatedly converts grouped string values into floating-point fields.", false},
@@ -665,6 +666,8 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x003B432C, 0x003B90B0, "High-volume numeric parser cluster E", "Second-largest decompiled string-to-float caller cluster.", false},
     {0x003BB224, 0x003BBDE1, "Script texture validation path", "Contains invalid [scripttexture] entry reporting.", false},
     {0x003C3FA8, 0x003C41D9, "Object/list access path", "Bounds-checks object-owned list data before virtual calls.", true},
+    {0x003D61F8, 0x003D6221, "CV.Calculate J2 checkpoint", "Narrow guarded stage that emits CV.Calculate - J2 when its enclosed vehicle calculation raises an exception.", true},
+    {0x003D5374, 0x003D8B20, "CV.Calculate vehicle calculation", "Large vehicle calculation routine containing checkpoints A through Y and repeated guarded subsystem updates.", false},
     {0x003F891C, 0x003F933B, "ANSI texture/image load path", "Calls D3DXGetImageInfoFromFileA and D3DXCreateTextureFromFileExA.", false},
     {0x003FCC08, 0x003FCC2F, "Texture stage limit guard", "Raises/logs Too high texture stage index when a stage counter reaches 8.", true},
     {0x004029AC, 0x00402B80, "Direct9 error formatter", "Builds Direct9 Error text through DXGetErrorString9W.", false},
@@ -675,6 +678,8 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x0044E383, 0x0044E483, "DirectSound dynamic import resolver", "Loads DSound.dll exports such as DirectSoundCreate and DirectSoundCreate8 into global function slots.", false},
     {0x0042695C, 0x00429302, "World/UI status update path", "Large update path with guarded divisions and deep object chains.", true},
     {0x00429FD8, 0x0042A412, "Direct3D device lost/reset path", "Logs device lost/resetted and formats reset failures through the Direct9 error formatter.", false},
+    {0x0042AD90, 0x0042ADB0, "P.KillNotNeededBuses checkpoint", "AI bus cleanup checkpoint that surfaces memory/resource failures during removal of unneeded buses.", true},
+    {0x0042AE20, 0x0042AE40, "P.KillNotNeededCars checkpoint", "AI car cleanup checkpoint that surfaces memory/resource failures during removal of unneeded cars.", true},
 };
 
 static void CacheModule(const MODULEENTRY32& module) {
@@ -955,8 +960,8 @@ static bool UpdateSignatureStats(const ExceptionSignature& signature, DWORD* occ
     slot->lastSeen = now;
     *occurrence = slot->count;
 
-    bool shouldWrite = slot->count <= 3 || ShouldWriteRepeatedSummary(slot->count);
-    *summaryOnly = slot->count > 3;
+    bool shouldWrite = slot->count == 1 || ShouldWriteRepeatedSummary(slot->count);
+    *summaryOnly = slot->count > 1;
 
     LeaveCriticalSection(&g_logLock);
     return shouldWrite;

@@ -3,7 +3,9 @@ param(
     [string]$GhidraRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\ghidra_12.1.2')).Path,
     [string]$ProjectDir = (Join-Path $PSScriptRoot 'ghidra-projects'),
     [string]$ProjectName = 'OmsiStatic',
-    [string]$OutputPath = (Join-Path $PSScriptRoot 'ghidra-omsi-string-xrefs.tsv')
+    [string]$OutputPath = (Join-Path $PSScriptRoot 'ghidra-omsi-string-xrefs.tsv'),
+    [string[]]$Targets = @(),
+    [switch]$UseExistingProject
 )
 
 Set-StrictMode -Version Latest
@@ -23,13 +25,19 @@ if (-not (Test-Path -LiteralPath $omsiExe)) {
 
 New-Item -ItemType Directory -Force -Path $ProjectDir | Out-Null
 
-& $headless `
-    $ProjectDir `
-    $ProjectName `
-    -import $omsiExe `
-    -overwrite `
-    -scriptPath $scriptPath `
-    -postScript ExportOmsiStringXrefs.java $OutputPath
+$programArgs = if ($UseExistingProject) {
+    @('-process', 'Omsi.exe', '-noanalysis')
+}
+else {
+    @('-import', $omsiExe, '-overwrite')
+}
+
+$headlessArgs = @($ProjectDir, $ProjectName) + $programArgs + @(
+    '-scriptPath', $scriptPath,
+    '-postScript', 'ExportOmsiStringXrefs.java', $OutputPath
+) + $Targets
+
+& $headless @headlessArgs
 
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE

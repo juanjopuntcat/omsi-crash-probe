@@ -303,11 +303,14 @@ function Get-SystemErrorCode8Bucket {
 
     $text = if ($null -eq $Context) { '' } else { $Context.ToLowerInvariant() }
 
+    if ($text -match 'killnotneeded|\bknnc\b|notneededbuses|notneededcars') {
+        return 'AI bus cleanup / memory management'
+    }
+    if ($text -match 'map\.translate|\btuv\b|refreshobject|kacheln') {
+        return 'map translation / visibility update'
+    }
     if ($text -match 'cv\.calculate|vehicle|vehicles\\|\.bus|\.ovh|\.o3d|script|var|plugin|sound|wav') {
         return 'vehicle / script / asset owner'
-    }
-    if ($text -match 'killnotneeded|knnc|notneeded|bus') {
-        return 'AI bus cleanup / memory management'
     }
     if ($text -match 'texture|textur|direct|d3d|grafik|bitmap|image|bild|gdi') {
         return 'graphics / texture / GDI pressure'
@@ -450,6 +453,8 @@ function Analyze-Logfile {
         ErrorTexts = New-Counter
         SystemErrorContexts = New-Counter
         SystemErrorBuckets = New-Counter
+        SystemErrorPrecursors = New-Object 'System.Collections.Generic.List[object]'
+        SystemErrorPrecursorsCaptured = $false
         TextureFailures = New-Counter
         Direct9TextureErrors = New-Counter
         Direct3DResetErrors = New-Counter
@@ -471,6 +476,7 @@ function Analyze-Logfile {
 
     $previousWasSystemCode8 = $false
     $pendingSystemCode8Time = ''
+    $recentLogLines = New-Object 'System.Collections.Generic.Queue[object]'
     foreach ($line in Get-Content -LiteralPath $Path) {
         $result.LineCount += 1
 
@@ -510,6 +516,12 @@ function Analyze-Logfile {
         }
 
         if ($line -match '(?i)Systemfehler\.\s+Code:\s*8') {
+            if (-not $result.SystemErrorPrecursorsCaptured) {
+                foreach ($precursor in $recentLogLines) {
+                    $result.SystemErrorPrecursors.Add($precursor)
+                }
+                $result.SystemErrorPrecursorsCaptured = $true
+            }
             $previousWasSystemCode8 = $true
             $pendingSystemCode8Time = $lineTime
             if ($lineTime) {
@@ -565,6 +577,16 @@ function Analyze-Logfile {
                     $result.Direct3DResetFirst = $lineTime
                 }
                 $result.Direct3DResetLast = $lineTime
+            }
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($line)) {
+            $recentLogLines.Enqueue([pscustomobject]@{
+                Time = $lineTime
+                Line = $line.Trim()
+            })
+            while ($recentLogLines.Count -gt 8) {
+                [void]$recentLogLines.Dequeue()
             }
         }
     }
@@ -1084,6 +1106,10 @@ else {
     $lines.Add('')
     Add-MarkdownTable $lines @('Bucket', 'Count') (New-CountRows $logSummary.SystemErrorBuckets 'Bucket' $Top)
 
+    $lines.Add('### Lines before first Systemfehler Code 8')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Time', 'Line') @($logSummary.SystemErrorPrecursors | ForEach-Object { $_ })
+
     $lines.Add('### Systemfehler Code 8 memory correlation')
     $lines.Add('')
     $systemCode8MemoryRows = @()
@@ -1245,6 +1271,10 @@ if ($dominantProbeFamily -and $dominantProbeFamily.Key -eq 'Numeric / floating p
 }
 if ($logSummary.Categories.ContainsKey('Systemfehler Code 8 / OS memory resources')) {
     $lines.Add('- OMSI reported Systemfehler Code 8. In this game this usually needs process memory, VAS fragmentation, GDI handles, and texture pressure checked together.')
+}
+$collisionMeshPrecursor = @($logSummary.SystemErrorPrecursors | Where-Object { $_.Line -match '(?i)collision mesh without unloading|Kollisionsmesh' } | Select-Object -First 1)
+if ($collisionMeshPrecursor.Count -gt 0) {
+    $lines.Add('- The first Code 8 burst was preceded by an OMSI PhysObj warning about loading another collision mesh without unloading the previous one during tile refresh. This is an engine-state correlation, not proof that the logged asset is defective.')
 }
 $vasVerdict = New-VasVerdictRows $probeSummary.MemorySnapshots $logSummary | Select-Object -First 1
 if ($vasVerdict -and $vasVerdict.Verdict -match 'Critical|Severe') {

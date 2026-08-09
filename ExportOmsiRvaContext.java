@@ -45,26 +45,11 @@ public class ExportOmsiRvaContext extends GhidraScript {
             for (int i = 1; i < args.length && !monitor.isCancelled(); ++i) {
                 long rva = parseRva(args[i]);
                 Address center = imageBase.add(rva);
-                ensureDisassembly(center, 160);
                 exportWindow(writer, args[i], center, 96, 160);
             }
         }
 
         println("Output: " + outFile.getAbsolutePath());
-    }
-
-    private void ensureDisassembly(Address address, int bytesAfter) {
-        if (currentProgram.getListing().getInstructionContaining(address) != null) {
-            return;
-        }
-
-        try {
-            clearListing(address, address.add(bytesAfter));
-            disassemble(address);
-        }
-        catch (Exception e) {
-            println("Could not disassemble " + address + ": " + e.getMessage());
-        }
     }
 
     private void exportWindow(

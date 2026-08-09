@@ -70,23 +70,23 @@ struct BugEntry {
 };
 
 constexpr std::array<BugEntry, 17> kBugs = {{
-    {0x002EFD03, L"RS.HumansOutside null list entry", L"Access violation", L"Control-flow analysis", L"High", L"0x002EFD03", L"A null list entry is read at object field +0x5BC.", false},
-    {0x00428140, L"World/UI missing text subobject", L"Access violation", L"Trampoline design", L"High", L"0x00428140", L"A missing +0x5C subobject is used as a UI string source.", false},
-    {0x0042ADE3, L"AI cleanup missing list head", L"Access violation", L"Control-flow analysis", L"Medium", L"0x0042ADE3", L"Bus cleanup dereferences a missing global list head.", false},
-    {0x00429FD8, L"Direct3D device lost or reset", L"Direct3D", L"Documented", L"High", L"0x00429FD8", L"Device reset can fail with DEVICELOST, INVALIDCALL, or unknown HRESULT.", false},
-    {0x0024307C, L"Direct3D texture allocation failure", L"Memory / graphics", L"Documented", L"High", L"0x0024307C", L"Texture creation fails under allocation pressure or fragmented address space.", false},
-    {0x0002A000, L"Systemfehler Code 8", L"Memory / resources", L"Documented", L"High", L"0x0002A000", L"Windows cannot provide enough memory resources for the requested operation.", false},
-    {0x00070890, L"Invalid bitmap or image", L"Graphics resources", L"Documented", L"High", L"0x00070890", L"Bitmap state, extension, GDI allocation, or image validation fails.", false},
-    {0x0004DD85, L"Range-check error", L"Delphi runtime", L"Documented", L"High", L"0x0004DD85", L"An index or numeric operation violates a compiled Delphi range check.", false},
-    {0x000B57F4, L"List index exceeds maximum", L"Delphi runtime", L"Documented", L"High", L"0x000B57F4", L"A list is accessed outside its valid bounds.", false},
-    {0x0011FF8C, L"Argument outside range", L"Delphi runtime", L"Documented", L"High", L"0x0011FF8C", L"A method receives an index or length outside its accepted range.", false},
-    {0x00024F68, L"Invalid floating-point value", L"Parser", L"Documented", L"High", L"0x00024F68", L"Text input cannot be converted to the expected floating-point value.", false},
-    {0x00011610, L"Floating-point division by zero", L"Calculation", L"Documented", L"High", L"0x00011610", L"A vehicle or engine calculation divides by zero.", false},
-    {0x0004DF1C, L"Stream read or write failure", L"File I/O", L"Documented", L"Medium-high", L"0x0004DF1C", L"A generic stream operation cannot read or write the requested data.", false},
-    {0x001D378D, L"Invalid script variable or command", L"Script parser", L"Documented", L"High", L"0x001D378D", L"A script refers to an unknown variable, macro, constant, or function.", false},
-    {0x003D5374, L"Map or vehicle update failure", L"Simulation", L"Documented", L"Medium", L"0x003D5374", L"Failures around map translation, tile refresh, or CV.Calculate.", false},
-    {0x00405D60, L"DirectSound access violation", L"Audio", L"Documented", L"Medium", L"0x00405D60", L"A sound load or DirectSound buffer operation reaches invalid state.", false},
-    {0x00028E06, L"External exception C06D007E", L"External module", L"Documented", L"Medium-low", L"0x00028E06", L"An external dependency or delayed import cannot be resolved.", false}
+    {0x002EFD03, L"RS.HumansOutside null list entry", L"Access violation", L"Patch candidate", L"High", L"0x002EFD03", L"A null list entry is read at object field +0x5BC; a guarded skip is being designed.", false},
+    {0x00428140, L"World/UI missing text subobject", L"Access violation", L"Patch candidate", L"High", L"0x00428140", L"A missing +0x5C subobject needs an empty-string fallback without skipping later UI updates.", false},
+    {0x0042ADE3, L"AI cleanup missing list head", L"Access violation", L"Patch candidate", L"Medium-high", L"0x0042ADE3", L"Bus cleanup dereferences a missing global list head before its existing car-cleanup continuation.", false},
+    {0x00429FD8, L"Direct3D device lost or reset", L"Direct3D", L"Recovery research", L"High", L"0x00429FD8", L"The anchor reports device loss; a fix requires the full reset and resource-recreation state machine.", false},
+    {0x0024307C, L"Direct3D texture allocation failure", L"Memory / graphics", L"Mitigation research", L"High", L"0x0024307C", L"Texture creation fails under allocation pressure; cache lifetime and VAS fragmentation remain under study.", false},
+    {0x0002A000, L"Systemfehler Code 8", L"Memory / resources", L"Owner required", L"High", L"0x0002A000", L"This generic OS wrapper needs the failing owner and VAS/GDI/USER evidence before mitigation.", false},
+    {0x00070890, L"Invalid bitmap or image", L"Graphics resources", L"Owner required", L"High", L"0x00070890", L"Several loader, format, GDI, and resource failures share this bitmap diagnostic.", false},
+    {0x0004DD85, L"Range-check error", L"Delphi runtime", L"Caller required", L"High", L"0x0004DD85", L"A shared Delphi guard detected invalid state; its OMSI caller must be fixed, not the guard.", false},
+    {0x000B57F4, L"List index exceeds maximum", L"Delphi runtime", L"Caller required", L"High", L"0x000B57F4", L"This shared list-bounds helper needs the owning list operation before a safe fix is possible.", false},
+    {0x0011FF8C, L"Argument outside range", L"Delphi runtime", L"Caller required", L"High", L"0x0011FF8C", L"Many unrelated bounds checks share this message; the exact owner and argument contract are required.", false},
+    {0x00024F68, L"Invalid floating-point value", L"Parser", L"Input validation", L"High", L"0x00024F68", L"The generic parser needs the offending token and owning field before a caller-specific fallback.", false},
+    {0x00011610, L"Floating-point division by zero", L"Calculation", L"Caller required", L"High", L"0x00011610", L"The shared exception machinery does not identify which simulation formula used a zero denominator.", false},
+    {0x0004DF1C, L"Stream read or write failure", L"File I/O", L"Caller required", L"Medium-high", L"0x0004DF1C", L"This shared stream helper must not report success for incomplete data; the concrete loader is required.", false},
+    {0x001D378D, L"Invalid script variable or command", L"Script parser", L"Diagnostic by design", L"High", L"0x001D378D", L"The compiler intentionally reports an unknown variable, macro, constant, or function.", false},
+    {0x003D5374, L"Map or vehicle update failure", L"Simulation", L"Checkpoint required", L"Medium", L"0x003D5374", L"Map translation, tile refresh, and CV.Calculate are separate owners that need an exact checkpoint.", false},
+    {0x00405D60, L"DirectSound access violation", L"Audio", L"Owner research", L"Medium", L"0x00405D60", L"WAV validation and buffer calls are mapped, but the failing interface or buffer lifetime is not.", false},
+    {0x00028E06, L"External exception C06D007E", L"External module", L"External boundary", L"Medium-low", L"0x00028E06", L"The anchor only formats an external exception; its throwing module and caller must be identified.", false}
 }};
 
 HWND g_path = nullptr;

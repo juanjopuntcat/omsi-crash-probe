@@ -8,9 +8,9 @@
       "faultRva": "0x002EFD03",
       "knownFileOffset": "0x002EF103",
       "confidence": "high",
-      "state": "control-flow-analysis",
-      "finding": "A list lookup can return null before the engine reads object field +0x5BC.",
-      "nextStep": "Recover the containing loop and choose the correct next-entry branch."
+      "state": "trampoline-design",
+      "finding": "A list lookup can return null before the engine reads object field +0x5BC; the existing predicate-failure path continues at RVA 0x002EFEFC.",
+      "nextStep": "Design a null guard that reaches the existing next-entry path while preserving the loop's registers and flags."
     },
     {
       "id": "omsi-world-ui-null-subobject",
@@ -21,7 +21,7 @@
       "confidence": "high",
       "state": "trampoline-design",
       "finding": "The +0x5C subobject can be null while its +0x1F0 string is copied into a UI control.",
-      "nextStep": "Return an empty Delphi string for the missing subobject without skipping later parent-object UI updates."
+      "nextStep": "Design and offline-test a trampoline that supplies an empty Delphi string without skipping later parent-object UI updates."
     },
     {
       "id": "omsi-ai-cleanup-null-list-head",
@@ -29,10 +29,10 @@
       "target": "Omsi.exe",
       "faultRva": "0x0042ADE3",
       "knownFileOffset": "0x0042A1E3",
-      "confidence": "medium",
-      "state": "control-flow-analysis",
-      "finding": "AI cleanup dereferences a global list head before comparing its +0x20 state.",
-      "nextStep": "Recover the complete bus-cleanup block and verify whether a null head should skip to car cleanup."
+      "confidence": "medium-high",
+      "state": "owner-lifecycle-analysis",
+      "finding": "AI cleanup dereferences a global list head before comparing its +0x20 state; the existing less-than-state branch skips to car cleanup at RVA 0x0042AE5D.",
+      "nextStep": "Resolve the global owner's lifecycle and verify that a null head may safely use the existing car-cleanup continuation."
     }
   ]
 }

@@ -80,6 +80,40 @@ int main() {
         ok &= Check(omsi_patch::LoadPeImage(tempFile, &loaded, &error),
             "file-backed PE inspection must succeed");
         ok &= Check(loaded.identity.sha256.size() == 64, "SHA-256 must contain 64 hex digits");
+        omsi_patch::PatchRequest request;
+        request.id = "synthetic-byte-change";
+        request.allowedOriginalSha256 = loaded.identity.sha256;
+        request.fileOffset = 0x420;
+        request.expectedBytes = {0xAA, 0xBB};
+        request.replacementBytes = {0x11, 0x22};
+        ok &= Check(omsi_patch::AuditPatch(tempFile, request, &error),
+            "approved synthetic patch must audit successfully");
+        ok &= Check(omsi_patch::ApplyPatch(tempFile, request, &error),
+            "approved synthetic patch must apply successfully");
+        omsi_patch::PeImage patched;
+        ok &= Check(omsi_patch::LoadPeImage(tempFile, &patched, &error) &&
+            omsi_patch::BytesMatch(patched, 0x420, {0x11, 0x22}),
+            "apply must write replacement bytes");
+        ok &= Check(!omsi_patch::ApplyPatch(tempFile, request, &error),
+            "already patched target must not apply twice");
+        ok &= Check(omsi_patch::RollbackPatch(tempFile, request, &error),
+            "approved backup must roll back successfully");
+        omsi_patch::PeImage restored;
+        ok &= Check(omsi_patch::LoadPeImage(tempFile, &restored, &error) &&
+            restored.identity.sha256 == request.allowedOriginalSha256,
+            "rollback must restore the exact original hash");
+        ok &= Check(!omsi_patch::ApplyPatch(tempFile, request, &error),
+            "apply must refuse to overwrite an existing backup");
+        DeleteFileW(omsi_patch::BackupPath(tempFile, request.id).c_str());
+
+        omsi_patch::PatchRequest unsafeId = request;
+        unsafeId.id = "..\\escape";
+        ok &= Check(!omsi_patch::AuditPatch(tempFile, unsafeId, &error),
+            "unsafe patch ID must fail validation");
+        omsi_patch::PatchRequest wrongBytes = request;
+        wrongBytes.expectedBytes = {0x00, 0x00};
+        ok &= Check(!omsi_patch::AuditPatch(tempFile, wrongBytes, &error),
+            "unexpected original bytes must fail audit");
     }
     DeleteFileW(tempFile);
 

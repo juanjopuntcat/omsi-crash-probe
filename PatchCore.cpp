@@ -87,6 +87,85 @@ bool Sha256(const std::vector<uint8_t>& bytes, std::string* digest, std::string*
     return true;
 }
 
+bool IsPatchIdValid(const std::string& id) {
+    if (id.empty() || id.size() > 80) return false;
+    return std::all_of(id.begin(), id.end(), [](unsigned char character) {
+        return (character >= 'a' && character <= 'z') ||
+            (character >= 'A' && character <= 'Z') ||
+            (character >= '0' && character <= '9') || character == '-' || character == '_';
+    });
+}
+
+bool EqualAsciiInsensitive(const std::string& left, const std::string& right) {
+    if (left.size() != right.size()) return false;
+    for (size_t i = 0; i < left.size(); ++i) {
+        char a = left[i];
+        char b = right[i];
+        if (a >= 'a' && a <= 'z') a = static_cast<char>(a - 'a' + 'A');
+        if (b >= 'a' && b <= 'z') b = static_cast<char>(b - 'a' + 'A');
+        if (a != b) return false;
+    }
+    return true;
+}
+
+bool ValidateRequest(const PatchRequest& request, std::string* error) {
+    if (!IsPatchIdValid(request.id)) {
+        SetError(error, "Patch ID must contain only letters, digits, hyphens, or underscores");
+        return false;
+    }
+    if (request.allowedOriginalSha256.size() != 64) {
+        SetError(error, "Patch requires one complete original SHA-256");
+        return false;
+    }
+    if (request.expectedBytes.empty() || request.expectedBytes.size() != request.replacementBytes.size()) {
+        SetError(error, "Patch byte sequences must be non-empty and preserve length");
+        return false;
+    }
+    return true;
+}
+
+bool ValidateOriginal(const PeImage& image, const PatchRequest& request, std::string* error) {
+    if (!EqualAsciiInsensitive(image.identity.sha256, request.allowedOriginalSha256)) {
+        SetError(error, "Target SHA-256 is not the approved original");
+        return false;
+    }
+    if (!BytesMatch(image, request.fileOffset, request.expectedBytes)) {
+        SetError(error, "Target bytes do not match the approved original sequence");
+        return false;
+    }
+    return true;
+}
+
+bool WriteTemporaryAndReplace(
+        const std::wstring& targetPath,
+        const std::vector<uint8_t>& bytes,
+        std::string* error) {
+    const std::wstring temporary = targetPath + L".omsicrashprobe.tmp";
+    HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
+    if (file == INVALID_HANDLE_VALUE) {
+        SetError(error, "Could not create a new temporary patch file");
+        return false;
+    }
+    DWORD written = 0;
+    const bool wrote = bytes.size() <= MAXDWORD &&
+        WriteFile(file, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) != FALSE &&
+        written == bytes.size() && FlushFileBuffers(file) != FALSE;
+    CloseHandle(file);
+    if (!wrote) {
+        DeleteFileW(temporary.c_str());
+        SetError(error, "Could not write the complete temporary patch file");
+        return false;
+    }
+    if (!MoveFileExW(temporary.c_str(), targetPath.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temporary.c_str());
+        SetError(error, "Could not atomically replace the target file");
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 bool PeIdentity::IsLargeAddressAware() const {
@@ -207,6 +286,56 @@ bool RvaToFileOffset(const PeImage& image, uint32_t rva, uint32_t* offset) {
 bool BytesMatch(const PeImage& image, uint32_t fileOffset, const std::vector<uint8_t>& expected) {
     if (fileOffset > image.bytes.size() || expected.size() > image.bytes.size() - fileOffset) return false;
     return std::equal(expected.begin(), expected.end(), image.bytes.begin() + fileOffset);
+}
+
+std::wstring BackupPath(const std::wstring& targetPath, const std::string& patchId) {
+    std::wstring wideId(patchId.begin(), patchId.end());
+    return targetPath + L".omsicrashprobe-" + wideId + L".bak";
+}
+
+bool AuditPatch(const std::wstring& targetPath, const PatchRequest& request, std::string* error) {
+    if (!ValidateRequest(request, error)) return false;
+    PeImage image;
+    return LoadPeImage(targetPath, &image, error) && ValidateOriginal(image, request, error);
+}
+
+bool ApplyPatch(const std::wstring& targetPath, const PatchRequest& request, std::string* error) {
+    if (!ValidateRequest(request, error)) return false;
+    PeImage image;
+    if (!LoadPeImage(targetPath, &image, error) || !ValidateOriginal(image, request, error)) return false;
+    const std::wstring backup = BackupPath(targetPath, request.id);
+    if (!CopyFileW(targetPath.c_str(), backup.c_str(), TRUE)) {
+        SetError(error, "Could not create a new patch-specific backup");
+        return false;
+    }
+    PeImage backupImage;
+    if (!LoadPeImage(backup, &backupImage, error) || !ValidateOriginal(backupImage, request, error)) {
+        DeleteFileW(backup.c_str());
+        SetError(error, "New backup does not match the approved original");
+        return false;
+    }
+    std::copy(request.replacementBytes.begin(), request.replacementBytes.end(),
+        image.bytes.begin() + request.fileOffset);
+    if (!WriteTemporaryAndReplace(targetPath, image.bytes, error)) {
+        CopyFileW(backup.c_str(), targetPath.c_str(), FALSE);
+        return false;
+    }
+    return true;
+}
+
+bool RollbackPatch(const std::wstring& targetPath, const PatchRequest& request, std::string* error) {
+    if (!ValidateRequest(request, error)) return false;
+    const std::wstring backup = BackupPath(targetPath, request.id);
+    PeImage backupImage;
+    if (!LoadPeImage(backup, &backupImage, error)) {
+        SetError(error, "Patch backup is missing or invalid");
+        return false;
+    }
+    if (!ValidateOriginal(backupImage, request, error)) {
+        SetError(error, "Patch backup is not the approved original");
+        return false;
+    }
+    return WriteTemporaryAndReplace(targetPath, backupImage.bytes, error);
 }
 
 }  // namespace omsi_patch

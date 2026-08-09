@@ -25,8 +25,19 @@ not by itself an approved patch.
 
 The native `OmsiPatchTool` currently exposes read-only `inspect` and `rva`
 commands with one JSON object on standard output. This is the initial stable
-boundary for automation and the future GUI. Mutation remains in the guarded
-PowerShell transport until equivalent native transaction tests exist.
+boundary for automation and the GUI.
+
+`PatchCore` now implements native audit, apply, and rollback primitives. They
+validate the patch ID, complete original SHA-256, exact original bytes, and
+same-length replacement. Apply creates a non-overwriting patch-specific backup,
+validates that new backup, writes a new sibling temporary file, flushes it, and
+atomically replaces the target. Rollback accepts only a backup that still
+matches the approved original. Offline tests exercise the full transaction and
+reject repeat application, unsafe IDs, and unexpected bytes.
+
+These mutation primitives are not exposed by the CLI or GUI yet. The next gate
+is a strictly validated native manifest reader; UI code must never construct
+patch offsets or replacement bytes itself.
 
 Original game binaries, wholesale decompiler output, and copyrighted game data
 must never be committed. Releases may contain our probe, scripts, manifests, and

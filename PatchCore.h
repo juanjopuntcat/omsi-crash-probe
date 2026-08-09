@@ -31,9 +31,21 @@ struct PeImage {
     std::vector<uint8_t> bytes;
 };
 
+struct PatchRequest {
+    std::string id;
+    std::string allowedOriginalSha256;
+    uint32_t fileOffset = 0;
+    std::vector<uint8_t> expectedBytes;
+    std::vector<uint8_t> replacementBytes;
+};
+
 bool LoadPeImage(const std::wstring& path, PeImage* image, std::string* error);
 bool ParsePeImage(const std::vector<uint8_t>& bytes, PeImage* image, std::string* error);
 bool RvaToFileOffset(const PeImage& image, uint32_t rva, uint32_t* offset);
 bool BytesMatch(const PeImage& image, uint32_t fileOffset, const std::vector<uint8_t>& expected);
+std::wstring BackupPath(const std::wstring& targetPath, const std::string& patchId);
+bool AuditPatch(const std::wstring& targetPath, const PatchRequest& request, std::string* error);
+bool ApplyPatch(const std::wstring& targetPath, const PatchRequest& request, std::string* error);
+bool RollbackPatch(const std::wstring& targetPath, const PatchRequest& request, std::string* error);
 
 }  // namespace omsi_patch

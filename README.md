@@ -334,6 +334,10 @@ runtime so OMSI's adjacent legacy runtime DLLs cannot satisfy its dependencies.
 - visible fix state, confidence, RVA, and the static finding; and
 - a deliberately disabled Apply action while no approved fix exists.
 
+The shared native core already has tested audit, apply, backup, atomic replace,
+and rollback primitives. The GUI does not expose them until a native manifest
+reader can supply approved patch data without duplicating offsets in UI code.
+
 The executable embeds its DPI/Common Controls manifest and Windows version
 resource, including product name, description, author, copyright, file/product
 version, original filename, and MIT license note. It is a native x86 Windows

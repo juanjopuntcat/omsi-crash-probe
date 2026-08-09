@@ -56,3 +56,7 @@ manifest are embedded resources in `OmsiCrashProbe.exe`.
 3. Add audit and backup visibility.
 4. Enable Apply and Rollback only after the first patch is approved and the
    native core has parity tests against the PowerShell transport.
+
+Stage 1 is complete, including native transactional apply and rollback tests.
+The GUI remains read-only until a native manifest reader and the first approved
+patch are both available.

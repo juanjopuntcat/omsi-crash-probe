@@ -636,8 +636,16 @@ function Analyze-ProbeLog {
         ExecutablePageCacheHits = [UInt64]0
         ExecutablePageCacheMisses = [UInt64]0
         ExecutablePageCacheSlots = [UInt64]0
+        ModulePageCacheHits = [UInt64]0
+        ModulePageCacheMisses = [UInt64]0
+        ModulePageCacheSlots = [UInt64]0
         ExecutableLargeAddressAware = $null
         ExecutableCharacteristics = ''
+        DroppedLogLines = [UInt64]0
+        DroppedSignatureUpdates = [UInt64]0
+        SignatureTableOverflowOccurrences = [UInt64]0
+        HandlerInternalFaults = [UInt64]0
+        SignatureSlots = [UInt64]0
         Started = $false
         Finalized = $false
     }
@@ -737,6 +745,22 @@ function Analyze-ProbeLog {
             $result.ExecutablePageCacheHits = [UInt64]$Matches.hits
             $result.ExecutablePageCacheMisses = [UInt64]$Matches.misses
             $result.ExecutablePageCacheSlots = [UInt64]$Matches.slots
+            continue
+        }
+
+        if ($line -match '^ModulePageCache hits=(?<hits>\d+) misses=(?<misses>\d+) slots=(?<slots>\d+)') {
+            $result.ModulePageCacheHits = [UInt64]$Matches.hits
+            $result.ModulePageCacheMisses = [UInt64]$Matches.misses
+            $result.ModulePageCacheSlots = [UInt64]$Matches.slots
+            continue
+        }
+
+        if ($line -match '^ProbeHealth droppedLogLines=(?<lines>\d+) droppedSignatureUpdates=(?<updates>\d+) signatureTableOverflowOccurrences=(?<overflow>\d+) handlerInternalFaults=(?<faults>\d+) signatureSlots=(?<slots>\d+)') {
+            $result.DroppedLogLines = [UInt64]$Matches.lines
+            $result.DroppedSignatureUpdates = [UInt64]$Matches.updates
+            $result.SignatureTableOverflowOccurrences = [UInt64]$Matches.overflow
+            $result.HandlerInternalFaults = [UInt64]$Matches.faults
+            $result.SignatureSlots = [UInt64]$Matches.slots
             continue
         }
 
@@ -1248,6 +1272,14 @@ else {
         $cacheTotal = $probeSummary.ExecutablePageCacheHits + $probeSummary.ExecutablePageCacheMisses
         $cacheHitRate = if ($cacheTotal -gt 0) { [math]::Round(100 * $probeSummary.ExecutablePageCacheHits / $cacheTotal, 1) } else { 0 }
         $lines.Add("- Executable-page cache: $($probeSummary.ExecutablePageCacheHits) hits, $($probeSummary.ExecutablePageCacheMisses) misses, $cacheHitRate% hit rate")
+    }
+    if ($probeSummary.ModulePageCacheHits -gt 0 -or $probeSummary.ModulePageCacheMisses -gt 0) {
+        $moduleCacheTotal = $probeSummary.ModulePageCacheHits + $probeSummary.ModulePageCacheMisses
+        $moduleCacheHitRate = if ($moduleCacheTotal -gt 0) { [math]::Round(100 * $probeSummary.ModulePageCacheHits / $moduleCacheTotal, 1) } else { 0 }
+        $lines.Add("- Module-page cache: $($probeSummary.ModulePageCacheHits) hits, $($probeSummary.ModulePageCacheMisses) misses, $moduleCacheHitRate% hit rate")
+    }
+    if ($probeSummary.SignatureSlots -gt 0) {
+        $lines.Add("- Handler health: $($probeSummary.DroppedLogLines) dropped log lines, $($probeSummary.DroppedSignatureUpdates) dropped signature updates, $($probeSummary.SignatureTableOverflowOccurrences) overflow occurrences, $($probeSummary.HandlerInternalFaults) internal faults, $($probeSummary.SignatureSlots) signature slots")
     }
     $lines.Add('')
 

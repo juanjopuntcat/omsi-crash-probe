@@ -268,6 +268,11 @@ OmsiCrashProbe.dll
   useful but should not run on every repeated first-chance exception.
 - Caches executable-page protection checks during stack scans while preserving
   the existing executable-memory filter and exact exception signatures.
+- Caches page-to-module lookups, including negative results, so repeated stack
+  scans do not linearly search the complete module table for every stack word.
+- Uses non-blocking handler-side logging locks and bounded signature-table
+  overflow accounting so probe contention cannot become a deadlock or log
+  storm. Final `ProbeHealth` counters make any dropped diagnostics explicit.
 - Delphi object/string decoding uses guarded memory reads and simply omits the
   decoded fields when the guessed layout is not valid.
 - Known-RVA classification is static text based on local Ghidra analysis; it

@@ -54,6 +54,8 @@ try {
     Assert-ReportContains $report 'Script command.*synthetic_bad' 'invalid script variable context'
     Assert-ReportContains $report 'Numeric / floating point.*not-a-number' 'invalid numeric token context'
     Assert-ReportContains $report 'Script compilation stopped' 'following script context line'
+    Assert-ReportContains $report 'Handler health: 2 dropped log lines, 3 dropped signature updates, 4 overflow occurrences, 0 internal faults, 128 signature slots' 'handler health statistics'
+    Assert-ReportContains $report 'Module-page cache: 950 hits, 50 misses, 95% hit rate' 'module page-cache statistics'
 
     Write-Host 'All analyzer fixture tests passed.'
 }

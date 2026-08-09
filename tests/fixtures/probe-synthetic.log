@@ -10,3 +10,5 @@ Exception signature summary:
     known omsi1="CV.Calculate J2 checkpoint" omsi2="Delphi system-error raiser"
 OmsiCrashProbe PluginFinalize
 ExecutablePageCache hits=900 misses=100 slots=1024
+ModulePageCache hits=950 misses=50 slots=4096
+ProbeHealth droppedLogLines=2 droppedSignatureUpdates=3 signatureTableOverflowOccurrences=4 handlerInternalFaults=0 signatureSlots=128

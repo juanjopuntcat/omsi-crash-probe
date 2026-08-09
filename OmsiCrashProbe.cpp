@@ -32,6 +32,10 @@ static char g_logPath[MAX_PATH] = {};
 // Thread-local reentrancy guard. If logging itself triggers another exception,
 // the nested call returns immediately instead of recursively logging forever.
 static __declspec(thread) bool g_insideHandler = false;
+static volatile LONG g_droppedLogLines = 0;
+static volatile LONG g_droppedSignatureUpdates = 0;
+static volatile LONG g_signatureTableOverflowOccurrences = 0;
+static volatile LONG g_handlerInternalFaults = 0;
 
 // Limit how many repeated signatures we remember in one OMSI process. This is
 // deliberately fixed-size and allocation-free because exception logging should
@@ -106,6 +110,22 @@ static volatile LONG g_vasThresholdLogged[kVasThresholdCount] = {};
 
 static void FormatSystemTime(const SYSTEMTIME& time, char* buffer, size_t bufferSize);
 
+// Never wait for a lock from inside the vectored exception handler. The thread
+// owning it may itself be suspended or failing, and blocking here could turn a
+// recoverable OMSI exception into a process-wide deadlock.
+static bool AcquireLogLock() {
+    if (!g_lockReady) {
+        return false;
+    }
+
+    if (g_insideHandler) {
+        return TryEnterCriticalSection(&g_logLock) != 0;
+    }
+
+    EnterCriticalSection(&g_logLock);
+    return true;
+}
+
 // Append one CRLF-terminated line to probe.log. This function avoids C++ iostreams
 // and heap-heavy logging so it remains small and predictable inside OMSI.
 static void AppendLine(const char* line) {
@@ -113,7 +133,10 @@ static void AppendLine(const char* line) {
         return;
     }
 
-    EnterCriticalSection(&g_logLock);
+    if (!AcquireLogLock()) {
+        InterlockedIncrement(&g_droppedLogLines);
+        return;
+    }
     HANDLE file = CreateFileA(
         g_logPath,
         FILE_APPEND_DATA,
@@ -668,8 +691,14 @@ struct ModuleInfo {
 // We cache the module list once at PluginStart, then the exception path only
 // performs a small linear scan over this fixed-size table.
 static const int kMaxCachedModules = 256;
+static const int kModulePageCacheSize = 4096;
 static ModuleInfo g_moduleCache[kMaxCachedModules] = {};
 static int g_moduleCacheCount = 0;
+// Values are 0 unknown, 1 no module, and module index + 2.
+static volatile LONG g_modulePageKeys[kModulePageCacheSize] = {};
+static volatile LONG g_modulePageValues[kModulePageCacheSize] = {};
+static volatile LONG g_modulePageCacheHits = 0;
+static volatile LONG g_modulePageCacheMisses = 0;
 
 struct KnownOmsiRva {
     uintptr_t start;
@@ -786,24 +815,11 @@ static void CacheModule(const MODULEENTRY32& module) {
     slot->size = module.modBaseSize;
 }
 
-static bool FindModuleInCache(uintptr_t address, ModuleInfo* out) {
-    for (int i = 0; i < g_moduleCacheCount; ++i) {
-        const ModuleInfo& module = g_moduleCache[i];
-        uintptr_t end = module.base + module.size;
-        if (address >= module.base && address < end) {
-            if (out) {
-                *out = module;
-            }
-            return true;
-        }
-    }
-
-    return false;
-}
-
 static void RefreshModuleCache() {
     g_moduleCacheCount = 0;
     memset(g_moduleCache, 0, sizeof(g_moduleCache));
+    memset(const_cast<LONG*>(g_modulePageKeys), 0, sizeof(g_modulePageKeys));
+    memset(const_cast<LONG*>(g_modulePageValues), 0, sizeof(g_modulePageValues));
 
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetCurrentProcessId());
     if (snapshot == INVALID_HANDLE_VALUE) {
@@ -825,7 +841,45 @@ static void RefreshModuleCache() {
 // Resolve an address inside the current process to the loaded module that owns
 // it. This lets the log say "Omsi.exe+0x123456" instead of only "0x00523456".
 static bool FindModuleForAddress(uintptr_t address, ModuleInfo* out) {
-    return FindModuleInCache(address, out);
+    uintptr_t pageBase = address & ~static_cast<uintptr_t>(0xFFF);
+    int cacheIndex = static_cast<int>((pageBase >> 12) % kModulePageCacheSize);
+    LONG cachedKey = g_modulePageKeys[cacheIndex];
+    LONG cachedValue = g_modulePageValues[cacheIndex];
+    if (cachedKey == static_cast<LONG>(pageBase) && cachedValue != 0) {
+        InterlockedIncrement(&g_modulePageCacheHits);
+        if (cachedValue == 1) {
+            return false;
+        }
+
+        int moduleIndex = cachedValue - 2;
+        if (moduleIndex >= 0 && moduleIndex < g_moduleCacheCount) {
+            const ModuleInfo& module = g_moduleCache[moduleIndex];
+            if (address >= module.base && address < module.base + module.size) {
+                if (out) {
+                    *out = module;
+                }
+                return true;
+            }
+        }
+    }
+
+    InterlockedIncrement(&g_modulePageCacheMisses);
+    int foundIndex = -1;
+    for (int i = 0; i < g_moduleCacheCount; ++i) {
+        const ModuleInfo& module = g_moduleCache[i];
+        if (address >= module.base && address < module.base + module.size) {
+            foundIndex = i;
+            if (out) {
+                *out = module;
+            }
+            break;
+        }
+    }
+
+    InterlockedExchange(&g_modulePageKeys[cacheIndex], 0);
+    InterlockedExchange(&g_modulePageValues[cacheIndex], foundIndex >= 0 ? foundIndex + 2 : 1);
+    InterlockedExchange(&g_modulePageKeys[cacheIndex], static_cast<LONG>(pageBase));
+    return foundIndex >= 0;
 }
 
 static bool IsExecutableAddress(uintptr_t address) {
@@ -870,6 +924,32 @@ static void LogExecutablePageCacheStats() {
         g_executablePageCacheHits,
         g_executablePageCacheMisses,
         kExecutablePageCacheSize);
+    AppendLine(line);
+}
+
+static void LogModulePageCacheStats() {
+    char line[256] = {};
+    snprintf(
+        line,
+        sizeof(line),
+        "ModulePageCache hits=%ld misses=%ld slots=%d",
+        g_modulePageCacheHits,
+        g_modulePageCacheMisses,
+        kModulePageCacheSize);
+    AppendLine(line);
+}
+
+static void LogProbeHealthStats() {
+    char line[256] = {};
+    snprintf(
+        line,
+        sizeof(line),
+        "ProbeHealth droppedLogLines=%ld droppedSignatureUpdates=%ld signatureTableOverflowOccurrences=%ld handlerInternalFaults=%ld signatureSlots=%d",
+        g_droppedLogLines,
+        g_droppedSignatureUpdates,
+        g_signatureTableOverflowOccurrences,
+        g_handlerInternalFaults,
+        kMaxSignatureStats);
     AppendLine(line);
 }
 
@@ -1045,7 +1125,10 @@ static bool UpdateSignatureStats(const ExceptionSignature& signature, DWORD* occ
     SYSTEMTIME now = {};
     GetLocalTime(&now);
 
-    EnterCriticalSection(&g_logLock);
+    if (!AcquireLogLock()) {
+        InterlockedIncrement(&g_droppedSignatureUpdates);
+        return false;
+    }
 
     SignatureStats* slot = nullptr;
     for (int i = 0; i < kMaxSignatureStats; ++i) {
@@ -1069,10 +1152,11 @@ static bool UpdateSignatureStats(const ExceptionSignature& signature, DWORD* occ
     }
 
     if (!slot) {
-        // If all slots are full, prefer preserving signal over dropping data.
+        // Logging every untracked occurrence after saturation creates an
+        // unbounded slow path. Preserve the aggregate overflow count instead.
+        InterlockedIncrement(&g_signatureTableOverflowOccurrences);
         LeaveCriticalSection(&g_logLock);
-        *occurrence = 1;
-        return true;
+        return false;
     }
 
     slot->count += 1;
@@ -1463,7 +1547,12 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS info) {
     DWORD code = info->ExceptionRecord->ExceptionCode;
     if (IsInterestingException(code)) {
         g_insideHandler = true;
-        LogContext(info);
+        __try {
+            LogContext(info);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER) {
+            InterlockedIncrement(&g_handlerInternalFaults);
+        }
         g_insideHandler = false;
     }
 
@@ -1508,6 +1597,8 @@ extern "C" void __stdcall PluginFinalize() {
     LogMemorySnapshot("PluginFinalize");
     LogSignatureSummary();
     LogExecutablePageCacheStats();
+    LogModulePageCacheStats();
+    LogProbeHealthStats();
 
     if (g_lockReady) {
         DeleteCriticalSection(&g_logLock);

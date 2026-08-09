@@ -98,6 +98,13 @@ For `Externe Exception %x` / `C06D007E`, local resource-record analysis showed
 That is a formatting/constructor path, so the caller above it is usually more
 important than the constructor itself.
 
+In the 2026-08-09 session, the analyzer correlated `Systemfehler. Code: 8`
+bursts with the largest free 32-bit virtual-address block dropping to 0 MB.
+Follow-up Ghidra analysis labeled `Omsi.exe+0x0039CC30..0x0039EDD0` as the
+`TMap.RefreshObjectsKacheln` map-object tile refresh loop, with
+`Omsi.exe+0x0039C9D0..0x0039CC29` as a nested object update path that calls the
+Delphi conversion wrapper.
+
 ## Interesting Exception Codes
 
 ```text

@@ -585,6 +585,8 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x00353658, 0x00353CEE, "Compact object float table parser", "Parses strings into a compact set of object float fields.", false},
     {0x003860B0, 0x0038AE21, "High-volume numeric parser cluster C", "Large parser cluster with many string-to-float conversions and scaling operations.", false},
     {0x003922A0, 0x00395FCF, "High-volume numeric parser cluster D", "Large parser cluster with repeated indexed float-field writes.", false},
+    {0x0039C9D0, 0x0039CC29, "TMap.RefreshObjectsKacheln object update path", "Nested map-object refresh path; selects list entries, converts one value through the Delphi conversion wrapper, and updates referenced object state.", false},
+    {0x0039CC30, 0x0039EDD0, "TMap.RefreshObjectsKacheln", "Large map-object tile refresh/update loop; static strings include TMap.RefreshObjectsKacheln IDCode diagnostics.", false},
     {0x0039F6B4, 0x0039F7A9, "Texture load error wrapper", "Labels operation as texture load and formats Direct9 errors.", false},
     {0x003B432C, 0x003B90B0, "High-volume numeric parser cluster E", "Second-largest decompiled string-to-float caller cluster.", false},
     {0x003BB224, 0x003BBDE1, "Script texture validation path", "Contains invalid [scripttexture] entry reporting.", false},

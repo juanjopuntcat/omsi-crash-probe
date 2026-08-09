@@ -17,6 +17,7 @@ static-error-summary.md
 
 # Ghidra local project state and generated exports
 ghidra-projects/
+ghidra-decompile*/
 ghidra-decompile-float-clusters/
 *.tsv
 

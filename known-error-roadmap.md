@@ -46,6 +46,8 @@ even considered.
   fragmentation, GDI handles, USER handles, and texture pressure together.
 - A low largest-free VAS block is more important than total free VAS for large
   Direct3D/GDI allocations in a 32-bit process.
+- One-shot 256/128/64/32/16 MB threshold records locate the first observed VAS
+  pressure transition without adding address-space walks between snapshots.
 - Asset paths in reports must come only from OMSI's own log text. Do not scan
   `SceneryObjects`, `Splines`, `maps`, `OmniNavigation`, `Vehicles`, `Addons`,
   or `SDK`.

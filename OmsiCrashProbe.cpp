@@ -83,6 +83,10 @@ struct AddressSpaceSnapshot {
     unsigned long long reservedRegionCount;
 };
 
+static const unsigned long long kVasThresholdsMB[] = { 256ULL, 128ULL, 64ULL, 32ULL, 16ULL };
+static const size_t kVasThresholdCount = sizeof(kVasThresholdsMB) / sizeof(kVasThresholdsMB[0]);
+static volatile LONG g_vasThresholdLogged[kVasThresholdCount] = {};
+
 static void FormatSystemTime(const SYSTEMTIME& time, char* buffer, size_t bufferSize);
 
 // Append one CRLF-terminated line to probe.log. This function avoids C++ iostreams
@@ -241,6 +245,29 @@ static void LogMemorySnapshot(const char* reason) {
         addressSpace.committedRegionCount,
         addressSpace.reservedRegionCount);
     AppendLine(line);
+
+    // Threshold records make the first observed transition into severe VAS
+    // fragmentation easy to locate. The address-space walk has already been
+    // performed for the snapshot, so these records add no scanning overhead.
+    unsigned long long largestFreeMB = BytesToMB(addressSpace.largestFreeBytes);
+    for (size_t i = 0; i < kVasThresholdCount; ++i) {
+        if (largestFreeMB <= kVasThresholdsMB[i] &&
+            InterlockedCompareExchange(&g_vasThresholdLogged[i], 1, 0) == 0) {
+            snprintf(
+                line,
+                sizeof(line),
+                "VasThresholdCrossed time=\"%s\" thresholdMB=%llu largestFreeMB=%llu freeMB=%llu privateKB=%llu gdiObjects=%lu userObjects=%lu reason=\"%s\"",
+                timestamp,
+                kVasThresholdsMB[i],
+                largestFreeMB,
+                BytesToMB(addressSpace.freeBytes),
+                hasProcessMemory ? BytesToKB(static_cast<unsigned long long>(processMemory.PrivateUsage)) : 0ULL,
+                gdiObjects,
+                userObjects,
+                reason ? reason : "<unknown>");
+            AppendLine(line);
+        }
+    }
 }
 
 // Build the log directory and file path beside Omsi.exe. GetModuleFileNameA with

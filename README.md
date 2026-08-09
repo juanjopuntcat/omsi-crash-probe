@@ -62,6 +62,8 @@ Newer snapshots also include a compact VAS layout summary: the number of free
 ranges, the top three free block sizes, committed region counts, and committed
 private/mapped/image megabytes. This makes fragmentation visible without dumping
 the full address map.
+Each session also records the first observed crossing of the 256, 128, 64, 32,
+and 16 MB largest-free-block thresholds without performing extra VAS scans.
 
 The session analyzer also includes a known-error catalog for recurring OMSI
 messages such as Direct3D reset failures, range/list checks, invalid float

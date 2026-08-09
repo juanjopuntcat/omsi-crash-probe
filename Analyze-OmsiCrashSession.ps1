@@ -591,6 +591,7 @@ function Analyze-ProbeLog {
         Modules = New-Counter
         OwnerFrames = New-Counter
         MemorySnapshots = New-Object 'System.Collections.Generic.List[object]'
+        VasThresholdEvents = New-Object 'System.Collections.Generic.List[object]'
         Started = $false
         Finalized = $false
     }
@@ -662,6 +663,20 @@ function Analyze-ProbeLog {
                 VasReservedRegions = Get-OptionalUInt64 $Matches 'reservedregions'
             }
             $result.MemorySnapshots.Add($snapshot)
+            continue
+        }
+
+        if ($line -match '^VasThresholdCrossed time="(?<time>[^"]+)" thresholdMB=(?<threshold>\d+) largestFreeMB=(?<largest>\d+) freeMB=(?<free>\d+) privateKB=(?<private>\d+) gdiObjects=(?<gdi>\d+) userObjects=(?<user>\d+) reason="(?<reason>[^"]+)"') {
+            $result.VasThresholdEvents.Add([pscustomobject]@{
+                Time = $Matches.time
+                ThresholdMB = [UInt64]$Matches.threshold
+                LargestFreeMB = [UInt64]$Matches.largest
+                FreeMB = [UInt64]$Matches.free
+                PrivateMB = [math]::Round(([double]$Matches.private / 1024), 1)
+                GdiObjects = [UInt64]$Matches.gdi
+                UserObjects = [UInt64]$Matches.user
+                Reason = $Matches.reason
+            })
             continue
         }
 
@@ -1201,6 +1216,10 @@ else {
     $lines.Add('### VAS pressure snapshots')
     $lines.Add('')
     Add-MarkdownTable $lines @('Time', 'Reason', 'PrivateMB', 'FreeVasMB', 'LargestFreeVasMB', 'TopFreeVasMB', 'FreeRanges', 'CommitPrivateMB', 'CommitMappedMB', 'CommitImageMB', 'GdiObjects', 'UserObjects') (New-VasPressureRows $probeSummary.MemorySnapshots $Top)
+
+    $lines.Add('### VAS threshold crossings')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Time', 'ThresholdMB', 'LargestFreeMB', 'FreeMB', 'PrivateMB', 'GdiObjects', 'UserObjects', 'Reason') @($probeSummary.VasThresholdEvents | Select-Object -First $Top)
 }
 
 $lines.Add('## Top suspicious signals')

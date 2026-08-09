@@ -109,14 +109,17 @@ build-x86\Release\OmsiCrashProbe.dll
 ```
 
 GitHub Actions also builds the Win32 Release DLL on every push and pull request.
-The workflow artifact is a zip containing:
+The build workflow artifact is a zip containing:
 
 ```text
 OmsiCrashProbe.dll
 OmsiCrashProbe.opl
 ```
 
-That artifact is suitable for attaching to a GitHub Release.
+Tags named `v*`, for example `v0.1.0`, also run the release-package workflow.
+That workflow builds the same Win32 plugin zip as a GitHub Actions artifact,
+ready to attach to a GitHub Release. The repository does not create releases
+automatically; that keeps repository-write automation explicit.
 
 ## Install
 

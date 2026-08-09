@@ -1,0 +1,39 @@
+name: Release Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x86:
+    name: Windows x86 release package
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -S . -B build-x86 -A Win32
+
+      - name: Build Release DLL
+        run: cmake --build build-x86 --config Release
+
+      - name: Package OMSI plugin files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -LiteralPath build-x86/Release/OmsiCrashProbe.dll -Destination dist/OmsiCrashProbe.dll
+          Copy-Item -LiteralPath OmsiCrashProbe.opl -Destination dist/OmsiCrashProbe.opl
+          Compress-Archive -LiteralPath dist/OmsiCrashProbe.dll,dist/OmsiCrashProbe.opl -DestinationPath OmsiCrashProbe-win32.zip -Force
+
+      - name: Upload release package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OmsiCrashProbe-win32
+          path: OmsiCrashProbe-win32.zip

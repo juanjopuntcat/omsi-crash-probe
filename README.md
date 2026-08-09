@@ -109,6 +109,8 @@ used to sharpen audio crash attribution.
 exhaustion.
 `ghidra-resource-lifecycle-notes.md` maps PhysObj collision load/unload,
 Direct3D texture creation/release, and Delphi VirtualAlloc/VirtualFree paths.
+`ghidra-script-parser-notes.md` maps invalid variable, macro, constant, and
+function-name diagnostics to their exact parser branches.
 
 Known RVA labels are context hints only. For example, an exception inside a
 Delphi managed-string helper usually means the useful owner is the caller that

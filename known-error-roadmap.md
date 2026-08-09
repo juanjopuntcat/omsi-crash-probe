@@ -20,7 +20,7 @@ even considered.
 | Delphi range/list/argument checks | High | `0x0002ADCC..0x0002C81F`, `0x0004DD85..0x0004DDA9`, `0x000B57F4..0x000B58ED`, `0x00120818..0x00120863`, `0x0011FF8C..0x001243B7`, `0x0020AEA4..0x0020CC14`, `0x0034B148..0x0034C858` | `Fehler bei Bereichspruefung`, `Listenindex ueberschreitet das Maximum`, `Argument ausserhalb des Bereichs`, caller stack above helper | Probe signatures now prefer owner-like OMSI frames over generic Delphi helpers; validate with the next runtime session. |
 | Invalid float / float divide by zero | Medium-high | `0x00024F68..0x00024FA9`, `0x00011610..0x00011611`, parser clusters `0x001AB9B8..0x003B90B0` | `Gleitkommawert`, `Gleitkommadivision durch Null`, `EZeroDivide`, parser-cluster KnownRVA labels | Add source-context extraction for nearby logfile text so invalid numeric tokens are easier to identify. |
 | Stream read/write failures | Medium | `0x0004DF1C..0x00054B2E`, `0x0004EB15..0x0004EB34` | `Stream-Lesefehler`, `Stream-Schreibfehler`, preceding/following load messages | Find higher-level callers of the stream helpers and label the common file-loader owners. |
-| Script variable / invalid command names | Medium-low | `0x00241C38..0x002425A8` for vehicle/script state stringvars, plus generic parser paths | `Variablenname ungueltig`, command text, vehicle path already in logfile | String and resource-record passes did not resolve this; next try broader script/parser function analysis. |
+| Script variable / invalid command names | High | parser `0x001D1E68..0x001D4076`; variable `0x001D378D..0x001D37E3`; macro `0x001D38D1..0x001D3ABC`; constant `0x001D3BAA..0x001D3C27`; function `0x001D3DE1..0x001D3E52` | `Variablenname ungueltig`, command text, source context and vehicle path already in logfile | The four resource keys and their negative symbol-lookup branches are mapped; validate future stacks against the narrow paths. |
 | Map/vehicle update bursts | Medium | `0x002F359C..0x002F3981`, `0x0039C9D0..0x0039EDD0`, `0x003D5374..0x003D8B20`, J2 `0x003D61F8..0x003D6221` | `CV.Calculate`, `map.translate`, `TUV`, VAS largest-free block, caller stacks | Static xrefs now separate the vehicle J2 checkpoint from `TMap.RefreshObjectsKacheln`; validate their runtime ordering in the next session. |
 | PhysObj duplicate collision load | High | load `0x003AE8E0..0x003AEC00`, unload `0x003AE554`, owner pair `0x003AB110..0x003AB3FF` | duplicate collision warning, tile refresh timing, reserved VAS blocks | Load and unload are statically symmetric; investigate runtime load-before-unload ordering and repeated owner identity. |
 | DirectSound / audio access violations | Medium | `0x00405D60..0x004060DE`, plus `0x00405E32..0x00405F1B`, `0x00405F84..0x00405FC9`, `0x00405FFE..0x0040604B`, `0x0044E383..0x0044E483` | AVs in `DSound.dll`, sound load timing, stack candidates in WAV/DirectSound subpaths | Sharper labels are implemented; validate with future runtime stacks pointing at DirectSound/audio paths. |
@@ -30,11 +30,13 @@ even considered.
 
 ## Immediate Static Priorities
 
-1. Run broader script/parser static analysis for unresolved invalid variable or
-   command-name messages.
-2. Use the analyzer's top suspicious signals section after each session to pick
+1. Find higher-level callers of the stream read/write helpers and label common
+   file-loader owners.
+2. Add source-context extraction for invalid numeric tokens and script parser
+   diagnostics already present in `logfile.txt`.
+3. Use the analyzer's top suspicious signals section after each session to pick
    the next narrow static pass instead of repeatedly launching OMSI.
-3. Keep release automation separate from diagnostics. Release tags package the
+4. Keep release automation separate from diagnostics. Release tags package the
    probe, but runtime behaviour remains passive and unchanged.
 
 ## Interpretation Rules

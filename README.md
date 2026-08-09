@@ -69,6 +69,10 @@ The current investigation map lives in `known-error-roadmap.md`. It lists which
 common OMSI error families already have static RVA anchors and which ones still
 need focused Ghidra passes.
 
+Focused Ghidra notes are kept as small project-authored markdown files. For
+example, `ghidra-weak-bucket-notes.md` documents the DirectSound/WAV subpaths
+used to sharpen audio crash attribution.
+
 Known RVA labels are context hints only. For example, an exception inside a
 Delphi managed-string helper usually means the useful owner is the caller that
 passed the bad string, not the helper itself.

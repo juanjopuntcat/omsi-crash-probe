@@ -591,7 +591,11 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x003F891C, 0x003F933B, "ANSI texture/image load path", "Calls D3DXGetImageInfoFromFileA and D3DXCreateTextureFromFileExA.", false},
     {0x003FCC08, 0x003FCC2F, "Texture stage limit guard", "Raises/logs Too high texture stage index when a stage counter reaches 8.", true},
     {0x004029AC, 0x00402B80, "Direct9 error formatter", "Builds Direct9 Error text through DXGetErrorString9W.", false},
+    {0x00405E32, 0x00405F1B, "WAV chunk validation path", "Formats RIFF/fmt/data chunk search errors while loading WAV sound data.", true},
+    {0x00405F84, 0x00405FC9, "DirectSound buffer creation failure path", "Calls a DirectSound buffer creation method and logs Sound load: Error while creating DS Sound Buffer on failure.", true},
+    {0x00405FFE, 0x0040604B, "DirectSound buffer lock failure path", "Calls a DirectSound buffer lock method and logs Sound load: Error while locking DS Sound Buffer on failure.", true},
     {0x00405D60, 0x004060DE, "WAV/DirectSound load path", "Loads RIFF/WAVE data and creates or locks DirectSound buffers.", false},
+    {0x0044E383, 0x0044E483, "DirectSound dynamic import resolver", "Loads DSound.dll exports such as DirectSoundCreate and DirectSoundCreate8 into global function slots.", false},
     {0x0042695C, 0x00429302, "World/UI status update path", "Large update path with guarded divisions and deep object chains.", true},
     {0x00429FD8, 0x0042A412, "Direct3D device lost/reset path", "Logs device lost/resetted and formats reset failures through the Direct9 error formatter.", false},
 };

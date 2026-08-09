@@ -41,6 +41,11 @@ enum DialogButtonId {
     IdDialogRollback
 };
 
+struct BugDialogState {
+    bool canApply;
+    bool canRollback;
+};
+
 struct BugEntry {
     uint32_t rva;
     const wchar_t* title;
@@ -420,6 +425,15 @@ bool PerformSelectedAction(HWND window, int row) {
     return ok;
 }
 
+HRESULT CALLBACK BugDialogCallback(HWND dialog, UINT notification, WPARAM, LPARAM, LONG_PTR data) {
+    if (notification == TDN_CREATED) {
+        const auto* state = reinterpret_cast<const BugDialogState*>(data);
+        SendMessageW(dialog, TDM_ENABLE_BUTTON, IdDialogApply, state->canApply);
+        SendMessageW(dialog, TDM_ENABLE_BUTTON, IdDialogRollback, state->canRollback);
+    }
+    return S_OK;
+}
+
 void ShowSelectedBugDialog(HWND window) {
     const int row = ListView_GetNextItem(g_list, -1, LVNI_SELECTED);
     if (row < 0 || static_cast<size_t>(row) >= kBugs.size()) return;
@@ -432,9 +446,10 @@ void ShowSelectedBugDialog(HWND window) {
         L"\n\nCategory: " + bug.category + L"\nConfidence: " + bug.confidence +
         L"\nRVA: " + bug.anchor;
     std::wstring expanded;
-    std::wstring actionText;
-    TASKDIALOG_BUTTON action = {};
-    bool hasAction = false;
+    BugDialogState dialogState = {
+        state == FixState::Available,
+        state == FixState::Applied
+    };
 
     if (patchIndex < 0) {
         content += L"\n\nProposed solution\nNo fix has been approved for this bug yet. The finding is available for diagnosis only.";
@@ -446,24 +461,21 @@ void ShowSelectedBugDialog(HWND window) {
             L"\nBackup: " + omsi_patch::BackupPath(target, patch.id);
         if (state == FixState::Available) {
             content += L"\n\nStatus: compatible and ready to apply.";
-            action.nButtonID = IdDialogApply;
-            actionText = L"Apply fix\nCreate a verified backup and patch the selected installation";
-            hasAction = true;
         } else if (state == FixState::Applied) {
             content += L"\n\nStatus: this fix is currently applied.";
-            action.nButtonID = IdDialogRollback;
-            actionText = L"Rollback fix\nRestore the verified original backup";
-            hasAction = true;
         } else {
             content += L"\n\nStatus: incompatible with the selected installation. No file will be changed.";
         }
     }
-    action.pszButtonText = actionText.c_str();
+    const TASKDIALOG_BUTTON actions[] = {
+        {IdDialogApply, L"Apply fix\nCreate a verified backup and patch this installation"},
+        {IdDialogRollback, L"Rollback fix\nRestore the verified original backup"}
+    };
 
     TASKDIALOGCONFIG dialog = {sizeof(dialog)};
     dialog.hwndParent = window;
-    dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_EXPAND_FOOTER_AREA;
-    if (hasAction) dialog.dwFlags |= TDF_USE_COMMAND_LINKS;
+    dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT |
+        TDF_EXPAND_FOOTER_AREA | TDF_USE_COMMAND_LINKS;
     dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
     dialog.pszWindowTitle = L"OMSI Crash Probe - Bug review";
     dialog.pszMainIcon = state == FixState::Available ? TD_SHIELD_ICON : TD_INFORMATION_ICON;
@@ -472,10 +484,12 @@ void ShowSelectedBugDialog(HWND window) {
     dialog.pszExpandedInformation = expanded.empty() ? nullptr : expanded.c_str();
     dialog.pszExpandedControlText = L"Show technical details";
     dialog.pszCollapsedControlText = L"Hide technical details";
-    dialog.pszFooter = hasAction ? L"OMSI must be closed before any game file can be changed." : nullptr;
-    dialog.cButtons = hasAction ? 1 : 0;
-    dialog.pButtons = hasAction ? &action : nullptr;
+    dialog.pszFooter = L"Actions are enabled only for an exact audited state. OMSI must be closed before files can change.";
+    dialog.cButtons = static_cast<UINT>(std::size(actions));
+    dialog.pButtons = actions;
     dialog.nDefaultButton = IDCLOSE;
+    dialog.pfCallback = BugDialogCallback;
+    dialog.lpCallbackData = reinterpret_cast<LONG_PTR>(&dialogState);
     int pressed = IDCLOSE;
     if (SUCCEEDED(TaskDialogIndirect(&dialog, &pressed, nullptr, nullptr)) &&
         (pressed == IdDialogApply || pressed == IdDialogRollback)) {

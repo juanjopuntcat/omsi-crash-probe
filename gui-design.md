@@ -59,6 +59,8 @@ Activating a row opens a native bug-review dialog. It always explains the
 finding and proposed solution, but exposes Apply or Rollback only when the
 manifest binding and audited installation state permit that exact operation.
 Patch ID, target, and backup path are shown in expandable technical details.
+Both lifecycle commands remain visible in the dialog; unsupported actions are
+disabled by the dialog callback rather than omitted or accepted optimistically.
 
 ## Delivery stages
 

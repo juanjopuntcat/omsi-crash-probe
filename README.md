@@ -337,9 +337,10 @@ runtime so OMSI's adjacent legacy runtime DLLs cannot satisfy its dependencies.
 Activating a bug row, or pressing `Review selected bug`, opens a native review
 dialog with the finding, category, confidence, RVA, proposed solution, and
 current compatibility state. Bugs without an approved fix remain informational.
-Compatible fixes expose one explicit Apply command; installed fixes expose
-Rollback. Patch ID, target, and backup path remain available as expandable
-technical details.
+The Apply and Rollback commands remain visible so the lifecycle is clear, but
+both are disabled unless the audited state permits exactly one of them.
+Compatible fixes enable Apply; installed fixes enable Rollback. Patch ID,
+target, and backup path remain available as expandable technical details.
 
 The compact native workspace uses a restrained high-contrast header, grouped
 installation status, alternating table rows, contextual fix-state colors, and

@@ -58,16 +58,20 @@ The largest free virtual block is especially useful for OMSI because a patched
 32-bit executable can still fail when the address space becomes fragmented.
 New snapshots include a local timestamp so the analyzer can correlate resource
 pressure with logfile events such as texture `E_OUTOFMEMORY` bursts.
+Newer snapshots also include a compact VAS layout summary: the number of free
+ranges, the top three free block sizes, committed region counts, and committed
+private/mapped/image megabytes. This makes fragmentation visible without dumping
+the full address map.
 
 The session analyzer also includes a known-error catalog for recurring OMSI
 messages such as Direct3D reset failures, range/list checks, invalid float
 conversions, Systemfehler Code 8, bitmap/image failures, and access violations
 in OMSI or DirectX/audio modules. It summarizes Direct3D reset HRESULTs,
 separates Systemfehler Code 8 into context buckets, correlates timed failures
-with nearby memory/resource snapshots, and emits a combined "top suspicious
-signals" table across `logfile.txt` and `probe.log`. These labels are triage
-hints that should be cross-checked against RVAs, stack candidates, and memory
-snapshots.
+with nearby memory/resource snapshots, emits a VAS exhaustion verdict, and
+builds a combined "top suspicious signals" table across `logfile.txt` and
+`probe.log`. These labels are triage hints that should be cross-checked against
+RVAs, stack candidates, and memory snapshots.
 
 The current investigation map lives in `known-error-roadmap.md`. It lists which
 common OMSI error families already have static RVA anchors and which ones still

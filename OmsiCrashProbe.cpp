@@ -73,6 +73,14 @@ static SignatureStats g_signatureStats[kMaxSignatureStats] = {};
 struct AddressSpaceSnapshot {
     unsigned long long freeBytes;
     unsigned long long largestFreeBytes;
+    unsigned long long secondLargestFreeBytes;
+    unsigned long long thirdLargestFreeBytes;
+    unsigned long long privateCommitBytes;
+    unsigned long long mappedCommitBytes;
+    unsigned long long imageCommitBytes;
+    unsigned long long freeRangeCount;
+    unsigned long long committedRegionCount;
+    unsigned long long reservedRegionCount;
 };
 
 static void FormatSystemTime(const SYSTEMTIME& time, char* buffer, size_t bufferSize);
@@ -111,6 +119,21 @@ static unsigned long long BytesToMB(unsigned long long bytes) {
     return bytes / (1024ULL * 1024ULL);
 }
 
+static void AddFreeRegionSize(AddressSpaceSnapshot* snapshot, unsigned long long regionSize) {
+    if (regionSize > snapshot->largestFreeBytes) {
+        snapshot->thirdLargestFreeBytes = snapshot->secondLargestFreeBytes;
+        snapshot->secondLargestFreeBytes = snapshot->largestFreeBytes;
+        snapshot->largestFreeBytes = regionSize;
+    }
+    else if (regionSize > snapshot->secondLargestFreeBytes) {
+        snapshot->thirdLargestFreeBytes = snapshot->secondLargestFreeBytes;
+        snapshot->secondLargestFreeBytes = regionSize;
+    }
+    else if (regionSize > snapshot->thirdLargestFreeBytes) {
+        snapshot->thirdLargestFreeBytes = regionSize;
+    }
+}
+
 // Walk the current 32-bit process address space and measure free virtual
 // address ranges. This is more expensive than reading process counters, so it
 // is only called for startup/shutdown and selected full exception captures.
@@ -136,9 +159,24 @@ static AddressSpaceSnapshot QueryAddressSpaceSnapshot() {
         if (mbi.State == MEM_FREE) {
             unsigned long long regionSize = static_cast<unsigned long long>(mbi.RegionSize);
             snapshot.freeBytes += regionSize;
-            if (regionSize > snapshot.largestFreeBytes) {
-                snapshot.largestFreeBytes = regionSize;
+            snapshot.freeRangeCount += 1;
+            AddFreeRegionSize(&snapshot, regionSize);
+        }
+        else if (mbi.State == MEM_COMMIT) {
+            unsigned long long regionSize = static_cast<unsigned long long>(mbi.RegionSize);
+            snapshot.committedRegionCount += 1;
+            if (mbi.Type == MEM_IMAGE) {
+                snapshot.imageCommitBytes += regionSize;
             }
+            else if (mbi.Type == MEM_MAPPED) {
+                snapshot.mappedCommitBytes += regionSize;
+            }
+            else if (mbi.Type == MEM_PRIVATE) {
+                snapshot.privateCommitBytes += regionSize;
+            }
+        }
+        else if (mbi.State == MEM_RESERVE) {
+            snapshot.reservedRegionCount += 1;
         }
 
         if (next <= address) {
@@ -174,11 +212,11 @@ static void LogMemorySnapshot(const char* reason) {
     char timestamp[64] = {};
     FormatSystemTime(now, timestamp, sizeof(timestamp));
 
-    char line[1024] = {};
+    char line[1536] = {};
     snprintf(
         line,
         sizeof(line),
-        "MemorySnapshot time=\"%s\" reason=\"%s\" privateKB=%llu workingSetKB=%llu peakWorkingSetKB=%llu pagefileKB=%llu commitAvailMB=%llu physAvailMB=%llu vasFreeMB=%llu vasLargestFreeMB=%llu gdiObjects=%lu userObjects=%lu countersOk=%lu systemOk=%lu",
+        "MemorySnapshot time=\"%s\" reason=\"%s\" privateKB=%llu workingSetKB=%llu peakWorkingSetKB=%llu pagefileKB=%llu commitAvailMB=%llu physAvailMB=%llu vasFreeMB=%llu vasLargestFreeMB=%llu gdiObjects=%lu userObjects=%lu countersOk=%lu systemOk=%lu vasFreeRanges=%llu vasTopFreeMB=%llu,%llu,%llu vasCommitPrivateMB=%llu vasCommitMappedMB=%llu vasCommitImageMB=%llu vasCommittedRegions=%llu vasReservedRegions=%llu",
         timestamp,
         reason ? reason : "<unknown>",
         hasProcessMemory ? BytesToKB(static_cast<unsigned long long>(processMemory.PrivateUsage)) : 0ULL,
@@ -192,7 +230,16 @@ static void LogMemorySnapshot(const char* reason) {
         gdiObjects,
         userObjects,
         static_cast<unsigned long>(hasProcessMemory),
-        static_cast<unsigned long>(hasSystemMemory));
+        static_cast<unsigned long>(hasSystemMemory),
+        addressSpace.freeRangeCount,
+        BytesToMB(addressSpace.largestFreeBytes),
+        BytesToMB(addressSpace.secondLargestFreeBytes),
+        BytesToMB(addressSpace.thirdLargestFreeBytes),
+        BytesToMB(addressSpace.privateCommitBytes),
+        BytesToMB(addressSpace.mappedCommitBytes),
+        BytesToMB(addressSpace.imageCommitBytes),
+        addressSpace.committedRegionCount,
+        addressSpace.reservedRegionCount);
     AppendLine(line);
 }
 

@@ -48,6 +48,29 @@ function Get-TopCounts {
         Select-Object -First $Limit
 }
 
+function Get-CounterSum {
+    param([System.Collections.Generic.Dictionary[string,int]]$Counter)
+
+    if ($Counter.Count -eq 0) {
+        return 0
+    }
+
+    return ($Counter.Values | Measure-Object -Sum).Sum
+}
+
+function Get-OptionalUInt64 {
+    param(
+        [hashtable]$MatchTable,
+        [string]$Name
+    )
+
+    if ($MatchTable.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace($MatchTable[$Name])) {
+        return [UInt64]$MatchTable[$Name]
+    }
+
+    return [UInt64]0
+}
+
 function Escape-Markdown {
     param([string]$Text)
 
@@ -612,7 +635,7 @@ function Analyze-ProbeLog {
             Add-Count $result.Modules $Matches.name
         }
 
-        if ($line -match '^MemorySnapshot(?: time="(?<time>[^"]+)")? reason="(?<reason>[^"]+)" privateKB=(?<private>\d+) workingSetKB=(?<working>\d+) peakWorkingSetKB=(?<peak>\d+) pagefileKB=(?<pagefile>\d+) commitAvailMB=(?<commit>\d+) physAvailMB=(?<phys>\d+) vasFreeMB=(?<vasfree>\d+) vasLargestFreeMB=(?<largest>\d+) gdiObjects=(?<gdi>\d+) userObjects=(?<user>\d+)') {
+        if ($line -match '^MemorySnapshot(?: time="(?<time>[^"]+)")? reason="(?<reason>[^"]+)" privateKB=(?<private>\d+) workingSetKB=(?<working>\d+) peakWorkingSetKB=(?<peak>\d+) pagefileKB=(?<pagefile>\d+) commitAvailMB=(?<commit>\d+) physAvailMB=(?<phys>\d+) vasFreeMB=(?<vasfree>\d+) vasLargestFreeMB=(?<largest>\d+) gdiObjects=(?<gdi>\d+) userObjects=(?<user>\d+)(?: countersOk=\d+ systemOk=\d+)?(?: vasFreeRanges=(?<freeranges>\d+) vasTopFreeMB=(?<top1>\d+),(?<top2>\d+),(?<top3>\d+) vasCommitPrivateMB=(?<commitprivate>\d+) vasCommitMappedMB=(?<commitmapped>\d+) vasCommitImageMB=(?<commitimage>\d+) vasCommittedRegions=(?<committedregions>\d+) vasReservedRegions=(?<reservedregions>\d+))?') {
             $snapshotTime = if ($Matches.ContainsKey('time')) { $Matches.time } else { '' }
             $snapshot = [pscustomobject]@{
                 Time = $snapshotTime
@@ -628,6 +651,15 @@ function Analyze-ProbeLog {
                 VasLargestFreeMB = [UInt64]$Matches.largest
                 GdiObjects = [UInt64]$Matches.gdi
                 UserObjects = [UInt64]$Matches.user
+                VasFreeRanges = Get-OptionalUInt64 $Matches 'freeranges'
+                VasTopFree1MB = Get-OptionalUInt64 $Matches 'top1'
+                VasTopFree2MB = Get-OptionalUInt64 $Matches 'top2'
+                VasTopFree3MB = Get-OptionalUInt64 $Matches 'top3'
+                VasCommitPrivateMB = Get-OptionalUInt64 $Matches 'commitprivate'
+                VasCommitMappedMB = Get-OptionalUInt64 $Matches 'commitmapped'
+                VasCommitImageMB = Get-OptionalUInt64 $Matches 'commitimage'
+                VasCommittedRegions = Get-OptionalUInt64 $Matches 'committedregions'
+                VasReservedRegions = Get-OptionalUInt64 $Matches 'reservedregions'
             }
             $result.MemorySnapshots.Add($snapshot)
             continue
@@ -832,6 +864,93 @@ function New-MemorySummaryRows {
         [pscustomobject]@{ Metric = 'max GDI objects'; Value = $gdiMax.GdiObjects; Reason = $gdiMax.Reason; Time = $gdiMax.Time },
         [pscustomobject]@{ Metric = 'max USER objects'; Value = $userMax.UserObjects; Reason = $userMax.Reason; Time = $userMax.Time }
     )
+}
+
+function New-VasVerdictRows {
+    param(
+        [object[]]$Snapshots,
+        [object]$LogSummary
+    )
+
+    if ($Snapshots.Count -eq 0) {
+        return @()
+    }
+
+    $minLargest = ($Snapshots | Sort-Object VasLargestFreeMB | Select-Object -First 1)
+    $code8Count = Get-CounterSum $LogSummary.Categories
+    if ($LogSummary.Categories.ContainsKey('Systemfehler Code 8 / OS memory resources')) {
+        $code8Count = $LogSummary.Categories['Systemfehler Code 8 / OS memory resources']
+    }
+    else {
+        $code8Count = 0
+    }
+    $textureCount = (Get-CounterSum $LogSummary.Direct9TextureErrors) + (Get-CounterSum $LogSummary.TextureFailures)
+    $dominantCode8 = Get-TopCounts $LogSummary.SystemErrorContexts 1 | Select-Object -First 1
+
+    $verdict = 'No critical VAS exhaustion evidence'
+    $next = 'Keep correlating failures with memory snapshots.'
+    if ($minLargest.VasLargestFreeMB -le 16 -and ($code8Count -gt 0 -or $textureCount -gt 0)) {
+        $verdict = 'Critical 32-bit VAS exhaustion / fragmentation'
+        $next = 'Prioritize largest-free VAS, texture/bitmap allocation paths, and repeated map/vehicle owners.'
+    }
+    elseif ($minLargest.VasLargestFreeMB -le 64) {
+        $verdict = 'Severe contiguous VAS pressure'
+        $next = 'Watch for Direct3D, GDI, bitmap, and Systemfehler Code 8 bursts near this timestamp.'
+    }
+    elseif ($minLargest.VasLargestFreeMB -le 128) {
+        $verdict = 'Low contiguous VAS headroom'
+        $next = 'This may still fail large texture/bitmap allocations even when total free VAS looks usable.'
+    }
+
+    @(
+        [pscustomobject]@{
+            Verdict = $verdict
+            MinLargestFreeVasMB = $minLargest.VasLargestFreeMB
+            At = $minLargest.Time
+            PrivateMB = [math]::Round($minLargest.PrivateKB / 1024, 1)
+            FreeVasMB = $minLargest.VasFreeMB
+            GdiObjects = $minLargest.GdiObjects
+            UserObjects = $minLargest.UserObjects
+            SystemCode8 = $code8Count
+            TextureSignals = $textureCount
+            DominantCode8Context = if ($dominantCode8) { $dominantCode8.Key } else { '' }
+            Next = $next
+        }
+    )
+}
+
+function New-VasPressureRows {
+    param(
+        [object[]]$Snapshots,
+        [int]$Limit = $Top
+    )
+
+    @($Snapshots |
+        Sort-Object VasLargestFreeMB, Time |
+        Select-Object -First $Limit |
+        ForEach-Object {
+            $topFree = if ($_.VasTopFree1MB -gt 0 -or $_.VasTopFree2MB -gt 0 -or $_.VasTopFree3MB -gt 0) {
+                "$($_.VasTopFree1MB),$($_.VasTopFree2MB),$($_.VasTopFree3MB)"
+            }
+            else {
+                ''
+            }
+
+            [pscustomobject]@{
+                Time = $_.Time
+                Reason = $_.Reason
+                PrivateMB = [math]::Round($_.PrivateKB / 1024, 1)
+                FreeVasMB = $_.VasFreeMB
+                LargestFreeVasMB = $_.VasLargestFreeMB
+                TopFreeVasMB = $topFree
+                FreeRanges = if ($_.VasFreeRanges -gt 0) { $_.VasFreeRanges } else { '' }
+                CommitPrivateMB = if ($_.VasCommitPrivateMB -gt 0) { $_.VasCommitPrivateMB } else { '' }
+                CommitMappedMB = if ($_.VasCommitMappedMB -gt 0) { $_.VasCommitMappedMB } else { '' }
+                CommitImageMB = if ($_.VasCommitImageMB -gt 0) { $_.VasCommitImageMB } else { '' }
+                GdiObjects = $_.GdiObjects
+                UserObjects = $_.UserObjects
+            }
+        })
 }
 
 function New-SuspiciousSignalRows {
@@ -1074,6 +1193,14 @@ else {
     $lines.Add('### Memory snapshots')
     $lines.Add('')
     Add-MarkdownTable $lines @('Metric', 'Value', 'Reason', 'Time') (New-MemorySummaryRows $probeSummary.MemorySnapshots)
+
+    $lines.Add('### VAS exhaustion verdict')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Verdict', 'MinLargestFreeVasMB', 'At', 'PrivateMB', 'FreeVasMB', 'GdiObjects', 'UserObjects', 'SystemCode8', 'TextureSignals', 'DominantCode8Context', 'Next') (New-VasVerdictRows $probeSummary.MemorySnapshots $logSummary)
+
+    $lines.Add('### VAS pressure snapshots')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Time', 'Reason', 'PrivateMB', 'FreeVasMB', 'LargestFreeVasMB', 'TopFreeVasMB', 'FreeRanges', 'CommitPrivateMB', 'CommitMappedMB', 'CommitImageMB', 'GdiObjects', 'UserObjects') (New-VasPressureRows $probeSummary.MemorySnapshots $Top)
 }
 
 $lines.Add('## Top suspicious signals')
@@ -1099,6 +1226,10 @@ if ($dominantProbeFamily -and $dominantProbeFamily.Key -eq 'Numeric / floating p
 }
 if ($logSummary.Categories.ContainsKey('Systemfehler Code 8 / OS memory resources')) {
     $lines.Add('- OMSI reported Systemfehler Code 8. In this game this usually needs process memory, VAS fragmentation, GDI handles, and texture pressure checked together.')
+}
+$vasVerdict = New-VasVerdictRows $probeSummary.MemorySnapshots $logSummary | Select-Object -First 1
+if ($vasVerdict -and $vasVerdict.Verdict -match 'Critical|Severe') {
+    $lines.Add("- VAS verdict: $($vasVerdict.Verdict); smallest largest-free block was $($vasVerdict.MinLargestFreeVasMB) MB at $($vasVerdict.At).")
 }
 if ($logSummary.Direct3DResetErrors.Count -gt 0) {
     $resetNames = ((Get-TopCounts $logSummary.Direct3DResetErrors 3 | ForEach-Object { $_.Key }) -join ', ')

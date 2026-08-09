@@ -15,7 +15,7 @@ even considered.
 | --- | --- | --- | --- | --- |
 | Direct3D device lost/reset | High | `0x00429FD8..0x0042A412`, `0x004029AC..0x00402B80`, `dxerr9.dll` error names | `D3DERR_DEVICELOST`, `D3DERR_INVALIDCALL`, reset-failed log text, stack candidates in the reset path | Analyzer now highlights reset HRESULTs separately from texture allocation failures; validate with future sessions. |
 | Direct3D texture allocation / `E_OUTOFMEMORY` | High | `0x00243F10..0x00243F7B`, `0x0024307C..0x00244AB3`, `0x003F891C..0x003F933B`, `0x002F9F89..0x002FA083` | `Texturladen - Direct9 Error`, `Texture "... " failed!`, VAS largest-free block, private memory, GDI/USER counts | First/last failure timing, Direct9 error-code summaries, and nearest timed memory-snapshot correlation are implemented for future probe logs. |
-| `Systemfehler. Code: 8` / OS memory resources | High | `0x0002A000..0x0002A09E`, `0x000769E4..0x0007720C`, `0x002D753C..0x002D77B3` | Code 8 log lines, following context tag, VAS/GDI/USER snapshots | Analyzer now separates Code 8 contexts into graphics/GDI, vehicle/script/asset, AI-bus cleanup, resource pressure, and unknown buckets. |
+| `Systemfehler. Code: 8` / OS memory resources | High | `0x0002A000..0x0002A09E`, `0x000769E4..0x0007720C`, `0x002D753C..0x002D77B3` | Code 8 log lines, following context tag, VAS/GDI/USER snapshots | Analyzer now separates Code 8 contexts and emits a VAS exhaustion verdict with min largest-free block, dominant context, and texture signals. |
 | Bitmap/image failures | High | `0x00070890..0x000708B2`, `0x000708CC..0x00070916`, `0x00072F90..0x00073009`, `0x00078964..0x0007899F`, `0x00098000..0x00098017` | `Bitmap ist ungueltig`, `Unbekannte Bilddateierweiterung`, `Ungueltiges Bild`, `Systemressourcen erschoepft` | Add analyzer hints that tie bitmap failures to GDI/resource counters when snapshots exist. |
 | Delphi range/list/argument checks | High | `0x0002ADCC..0x0002C81F`, `0x0004DD85..0x0004DDA9`, `0x000B57F4..0x000B58ED`, `0x00120818..0x00120863`, `0x0011FF8C..0x001243B7`, `0x0020AEA4..0x0020CC14`, `0x0034B148..0x0034C858` | `Fehler bei Bereichspruefung`, `Listenindex ueberschreitet das Maximum`, `Argument ausserhalb des Bereichs`, caller stack above helper | Probe signatures now prefer owner-like OMSI frames over generic Delphi helpers; validate with the next runtime session. |
 | Invalid float / float divide by zero | Medium-high | `0x00024F68..0x00024FA9`, `0x00011610..0x00011611`, parser clusters `0x001AB9B8..0x003B90B0` | `Gleitkommawert`, `Gleitkommadivision durch Null`, `EZeroDivide`, parser-cluster KnownRVA labels | Add source-context extraction for nearby logfile text so invalid numeric tokens are easier to identify. |
@@ -44,6 +44,8 @@ even considered.
   observed, not the OMSI owner that created the bad state.
 - `Systemfehler. Code: 8` should always be interpreted with memory, VAS
   fragmentation, GDI handles, USER handles, and texture pressure together.
+- A low largest-free VAS block is more important than total free VAS for large
+  Direct3D/GDI allocations in a 32-bit process.
 - Asset paths in reports must come only from OMSI's own log text. Do not scan
   `SceneryObjects`, `Splines`, `maps`, `OmniNavigation`, `Vehicles`, `Addons`,
   or `SDK`.

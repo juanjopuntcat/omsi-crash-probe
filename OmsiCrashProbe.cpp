@@ -544,6 +544,7 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x00021124, 0x00021145, "Delphi exception raise helper", "Marker for a raised Delphi exception, not usually the root cause.", true},
     {0x0002237C, 0x00022433, "Delphi conversion wrapper", "Raises through the Delphi exception helper when conversion reports an error.", true},
     {0x00024F68, 0x00024FA9, "String-to-float parser", "Candidate for invalid Gleitkommawert / decimal parsing errors.", true},
+    {0x00028E06, 0x00028E1E, "Delphi external exception constructor", "Builds Externe Exception %x resource-backed exception objects; caller context owns the useful diagnosis.", true},
     {0x00028EA4, 0x00028EB6, "Delphi out-of-memory exception constructor", "Constructs the Zu wenig Arbeitsspeicher resource-backed exception object.", true},
     {0x0002A000, 0x0002A09E, "Delphi system-error raiser", "Uses GetLastError and raises Systemfehler / OS error exceptions such as Code 8.", true},
     {0x0002ADCC, 0x0002C81F, "Delphi range-check string/list helper cluster", "Constructs ERangeError for negative index, upper-bound, and slice/length violations in Delphi collection/string helpers.", true},

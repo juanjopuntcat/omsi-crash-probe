@@ -18,6 +18,7 @@ Generated local artifacts:
 
 - `ghidra-weak-bucket-string-xrefs.tsv`
 - `ghidra-weak-bucket-rva-context.tsv`
+- `ghidra-weak-bucket-resource-record-refs.tsv`
 
 These TSVs are intentionally ignored by git.
 
@@ -83,8 +84,14 @@ The only command-related hit from the selected needles was:
 0x004322A8  Tastaturbefehle laden...
 ```
 
-So the invalid variable-name bucket still needs either a resource-record pass or
-a broader script/parser string search. It is not resolved by this xref pass.
+So the invalid variable-name bucket still needed a resource-record pass or a
+broader script/parser string search after this xref pass.
+
+The follow-up resource-record pass did not find `Variablenname` in the Delphi
+resource catalog either. That strongly suggests this message is built from a
+script/parser string path rather than the generic resource-record exception
+table. Keep using the command text and vehicle path from `logfile.txt` as the
+best runtime evidence until the parser path is mapped more broadly.
 
 The `T.PlugInRefrVars` text appears as data around:
 
@@ -103,8 +110,16 @@ pass, so it should not become a precise label yet.
 0x004CD5FC
 ```
 
-but Ghidra did not report a useful code xref in this pass. Treat this as Delphi
-runtime exception formatting, not an OMSI subsystem owner.
+The string-xref pass did not report a useful code xref, but the follow-up
+resource-record pass resolved the resource id to a Delphi constructor path:
+
+```text
+resource 0xFFC5 -> Omsi.exe+0x00028E06..0x00028E1E
+```
+
+Treat this as Delphi runtime exception formatting, not an OMSI subsystem owner.
+The useful evidence remains the caller above this constructor, the module, and
+surrounding logfile timing.
 
 The `Ressource` hits were mostly generic Delphi/VCL resource strings such as
 `Systemressourcen erschopft` and `Ressource %s nicht gefunden`. The useful
@@ -119,6 +134,7 @@ graphics/resource-exhaustion paths are already covered in
 - `0x00405F84..0x00405FC9`: DirectSound buffer creation failure path.
 - `0x00405FFE..0x0040604B`: DirectSound buffer lock failure path.
 - `0x0044E383..0x0044E483`: DirectSound dynamic import resolver.
+- `0x00028E06..0x00028E1E`: Delphi external exception constructor.
 
 These are context labels only. The probe remains passive and does not hook,
 patch, suppress, or handle any exception.

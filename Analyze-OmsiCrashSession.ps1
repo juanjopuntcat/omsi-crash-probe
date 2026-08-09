@@ -275,6 +275,30 @@ function Get-Family {
     return 'Other / unknown'
 }
 
+function Get-SystemErrorCode8Bucket {
+    param([string]$Context)
+
+    $text = if ($null -eq $Context) { '' } else { $Context.ToLowerInvariant() }
+
+    if ($text -match 'texture|textur|direct|d3d|grafik|bitmap|image|bild|gdi|cv\.calculate') {
+        return 'graphics / texture / GDI pressure'
+    }
+    if ($text -match 'vehicle|vehicles\\|\.bus|\.ovh|\.o3d|script|var|plugin|sound|wav') {
+        return 'vehicle / script / asset owner'
+    }
+    if ($text -match 'killnotneeded|knnc|notneeded|bus') {
+        return 'AI bus cleanup / memory management'
+    }
+    if ($text -match 'svs|system|resource|ressource|speicher|memory') {
+        return 'system/resource pressure'
+    }
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return 'unknown'
+    }
+
+    return 'other context'
+}
+
 function Get-KnownErrorCatalog {
     # These patterns codify the recurring OMSI errors collected from local
     # sessions, public logfiles, and static string analysis. The Origin field is
@@ -402,14 +426,20 @@ function Analyze-Logfile {
         KnownErrorPatterns = New-Counter
         ErrorTexts = New-Counter
         SystemErrorContexts = New-Counter
+        SystemErrorBuckets = New-Counter
         TextureFailures = New-Counter
         Direct9TextureErrors = New-Counter
+        Direct3DResetErrors = New-Counter
         TimeFirst = ''
         TimeLast = ''
+        SystemErrorFirst = ''
+        SystemErrorLast = ''
         TextureFailureFirst = ''
         TextureFailureLast = ''
         Direct9TextureErrorFirst = ''
         Direct9TextureErrorLast = ''
+        Direct3DResetFirst = ''
+        Direct3DResetLast = ''
     }
 
     if (-not $result.Exists) {
@@ -417,6 +447,7 @@ function Analyze-Logfile {
     }
 
     $previousWasSystemCode8 = $false
+    $pendingSystemCode8Time = ''
     foreach ($line in Get-Content -LiteralPath $Path) {
         $result.LineCount += 1
 
@@ -457,6 +488,13 @@ function Analyze-Logfile {
 
         if ($line -match '(?i)Systemfehler\.\s+Code:\s*8') {
             $previousWasSystemCode8 = $true
+            $pendingSystemCode8Time = $lineTime
+            if ($lineTime) {
+                if (-not $result.SystemErrorFirst) {
+                    $result.SystemErrorFirst = $lineTime
+                }
+                $result.SystemErrorLast = $lineTime
+            }
             continue
         }
 
@@ -467,6 +505,14 @@ function Analyze-Logfile {
                 $context = $Matches.tail.Trim()
             }
             Add-Count $result.SystemErrorContexts $context
+            Add-Count $result.SystemErrorBuckets (Get-SystemErrorCode8Bucket $context)
+            if ($pendingSystemCode8Time) {
+                if (-not $result.SystemErrorFirst) {
+                    $result.SystemErrorFirst = $pendingSystemCode8Time
+                }
+                $result.SystemErrorLast = $pendingSystemCode8Time
+            }
+            $pendingSystemCode8Time = ''
         }
 
         if ($line -match 'Texture\s+"(?<path>[^"]+)"\s+failed!') {
@@ -486,6 +532,16 @@ function Analyze-Logfile {
                     $result.Direct9TextureErrorFirst = $lineTime
                 }
                 $result.Direct9TextureErrorLast = $lineTime
+            }
+        }
+
+        if ($line -match '(?i)Direct-?3D-Device-Reset schlug fehl,\s*Fehler:\s*(?<error>[A-Z0-9_]+|0x[0-9A-Fa-f]+|Unknown)') {
+            Add-Count $result.Direct3DResetErrors $Matches.error
+            if ($lineTime) {
+                if (-not $result.Direct3DResetFirst) {
+                    $result.Direct3DResetFirst = $lineTime
+                }
+                $result.Direct3DResetLast = $lineTime
             }
         }
     }
@@ -770,6 +826,72 @@ function New-MemorySummaryRows {
     )
 }
 
+function New-SuspiciousSignalRows {
+    param(
+        [object]$LogSummary,
+        [object]$ProbeSummary,
+        [int]$Limit = $Top
+    )
+
+    $rows = New-Object 'System.Collections.Generic.List[object]'
+
+    foreach ($hit in Get-TopCounts $LogSummary.KnownErrorPatterns $Limit) {
+        $rows.Add([pscustomobject]@{
+            Source = 'OMSI logfile'
+            Signal = 'known pattern: ' + $hit.Key
+            Count = $hit.Value
+            Why = 'Recurring public/runtime error text.'
+        })
+    }
+
+    foreach ($hit in Get-TopCounts $LogSummary.SystemErrorBuckets $Limit) {
+        $rows.Add([pscustomobject]@{
+            Source = 'OMSI logfile'
+            Signal = 'Systemfehler Code 8 bucket: ' + $hit.Key
+            Count = $hit.Value
+            Why = 'OS memory/resource failure with following OMSI context line.'
+        })
+    }
+
+    foreach ($hit in Get-TopCounts $LogSummary.Direct3DResetErrors $Limit) {
+        $rows.Add([pscustomobject]@{
+            Source = 'OMSI logfile'
+            Signal = 'Direct3D reset error: ' + $hit.Key
+            Count = $hit.Value
+            Why = 'Device reset failed; separate from texture allocation errors.'
+        })
+    }
+
+    foreach ($hit in Get-TopCounts $LogSummary.Direct9TextureErrors $Limit) {
+        $rows.Add([pscustomobject]@{
+            Source = 'OMSI logfile'
+            Signal = 'Direct9 texture error: ' + $hit.Key
+            Count = $hit.Value
+            Why = 'Texture/image allocation or upload failed.'
+        })
+    }
+
+    foreach ($hit in Get-TopCounts $ProbeSummary.OwnerFrames $Limit) {
+        $rows.Add([pscustomobject]@{
+            Source = 'probe.log'
+            Signal = 'owner frame: ' + $hit.Key
+            Count = $hit.Value
+            Why = 'First-chance exception signature grouped by probable OMSI owner.'
+        })
+    }
+
+    foreach ($hit in Get-TopCounts $ProbeSummary.KnownRvaHits $Limit) {
+        $rows.Add([pscustomobject]@{
+            Source = 'probe.log'
+            Signal = 'KnownRVA: ' + $hit.Key
+            Count = $hit.Value
+            Why = 'Static Ghidra label seen in a runtime stack or exception frame.'
+        })
+    }
+
+    @($rows | Sort-Object Count -Descending | Select-Object -First $Limit)
+}
+
 $knownRvas = Import-KnownRvaTable $KnownRvaSourcePath
 $knownErrorCatalog = Get-KnownErrorCatalog
 $logSummary = Analyze-Logfile $LogfilePath $knownErrorCatalog
@@ -816,6 +938,17 @@ else {
     $lines.Add('')
     Add-MarkdownTable $lines @('Context', 'Count') (New-CountRows $logSummary.SystemErrorContexts 'Context' $Top)
 
+    $lines.Add('### Systemfehler Code 8 buckets')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Bucket', 'Count') (New-CountRows $logSummary.SystemErrorBuckets 'Bucket' $Top)
+
+    $lines.Add('### Systemfehler Code 8 memory correlation')
+    $lines.Add('')
+    $systemCode8MemoryRows = @()
+    $systemCode8MemoryRows += New-NearestMemoryRows $probeSummary.MemorySnapshots 'first Systemfehler Code 8' $logSummary.SystemErrorFirst
+    $systemCode8MemoryRows += New-NearestMemoryRows $probeSummary.MemorySnapshots 'last Systemfehler Code 8' $logSummary.SystemErrorLast
+    Add-MarkdownTable $lines @('Signal', 'SignalTime', 'Snapshot', 'SnapshotTime', 'DeltaSeconds', 'Reason', 'PrivateMB', 'LargestFreeVasMB', 'GdiObjects', 'UserObjects') $systemCode8MemoryRows
+
     $lines.Add('### Texture failures')
     $lines.Add('')
     $textureTimingRows = @(
@@ -837,6 +970,22 @@ else {
     $lines.Add('### Direct9 texture error codes')
     $lines.Add('')
     Add-MarkdownTable $lines @('Error', 'Count') (New-CountRows $logSummary.Direct9TextureErrors 'Error' $Top)
+
+    $lines.Add('### Direct3D reset timing')
+    $lines.Add('')
+    $direct3DResetTimingRows = @(
+        [pscustomobject]@{
+            Signal = 'Direct3D reset failed'
+            First = $logSummary.Direct3DResetFirst
+            Last = $logSummary.Direct3DResetLast
+            Count = ($logSummary.Direct3DResetErrors.Values | Measure-Object -Sum).Sum
+        }
+    ) | Where-Object { $_.Count -gt 0 }
+    Add-MarkdownTable $lines @('Signal', 'First', 'Last', 'Count') $direct3DResetTimingRows
+
+    $lines.Add('### Direct3D reset error codes')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Error', 'Count') (New-CountRows $logSummary.Direct3DResetErrors 'Error' $Top)
 
     $lines.Add('### Texture failure memory correlation')
     $lines.Add('')
@@ -919,6 +1068,10 @@ else {
     Add-MarkdownTable $lines @('Metric', 'Value', 'Reason', 'Time') (New-MemorySummaryRows $probeSummary.MemorySnapshots)
 }
 
+$lines.Add('## Top suspicious signals')
+$lines.Add('')
+Add-MarkdownTable $lines @('Source', 'Signal', 'Count', 'Why') (New-SuspiciousSignalRows $logSummary $probeSummary $Top)
+
 $lines.Add('## Session interpretation')
 $lines.Add('')
 $dominantProbeFamily = Get-TopCounts $probeSummary.Families 1 | Select-Object -First 1
@@ -938,6 +1091,10 @@ if ($dominantProbeFamily -and $dominantProbeFamily.Key -eq 'Numeric / floating p
 }
 if ($logSummary.Categories.ContainsKey('Systemfehler Code 8 / OS memory resources')) {
     $lines.Add('- OMSI reported Systemfehler Code 8. In this game this usually needs process memory, VAS fragmentation, GDI handles, and texture pressure checked together.')
+}
+if ($logSummary.Direct3DResetErrors.Count -gt 0) {
+    $resetNames = ((Get-TopCounts $logSummary.Direct3DResetErrors 3 | ForEach-Object { $_.Key }) -join ', ')
+    $lines.Add("- OMSI reported Direct3D device reset failures: $resetNames.")
 }
 if ($probeSummary.SignatureRows.Count -eq 0 -and $probeSummary.ExceptionEvents.Count -eq 0) {
     $lines.Add('- No probe exception signatures were found. This can happen if OMSI did not load the plugin or the session ended before interesting first-chance exceptions.')

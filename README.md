@@ -62,8 +62,12 @@ pressure with logfile events such as texture `E_OUTOFMEMORY` bursts.
 The session analyzer also includes a known-error catalog for recurring OMSI
 messages such as Direct3D reset failures, range/list checks, invalid float
 conversions, Systemfehler Code 8, bitmap/image failures, and access violations
-in OMSI or DirectX/audio modules. These labels are triage hints that should be
-cross-checked against RVAs, stack candidates, and memory snapshots.
+in OMSI or DirectX/audio modules. It summarizes Direct3D reset HRESULTs,
+separates Systemfehler Code 8 into context buckets, correlates timed failures
+with nearby memory/resource snapshots, and emits a combined "top suspicious
+signals" table across `logfile.txt` and `probe.log`. These labels are triage
+hints that should be cross-checked against RVAs, stack candidates, and memory
+snapshots.
 
 The current investigation map lives in `known-error-roadmap.md`. It lists which
 common OMSI error families already have static RVA anchors and which ones still
@@ -88,6 +92,11 @@ For `Systemfehler. Code: 8`, local Ghidra analysis showed
 path around `GetLastError()`. In the 2026-08-05 labeled session, its useful
 caller context included `Omsi.exe+0x0007702B`, inside a BMP/GDI bitmap load
 path that calls `CreateDIBSection` / `CreateDIBitmap`.
+
+For `Externe Exception %x` / `C06D007E`, local resource-record analysis showed
+`Omsi.exe+0x00028E06..0x00028E1E` as a Delphi external-exception constructor.
+That is a formatting/constructor path, so the caller above it is usually more
+important than the constructor itself.
 
 ## Interesting Exception Codes
 

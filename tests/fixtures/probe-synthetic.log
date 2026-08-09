@@ -11,4 +11,5 @@ Exception signature summary:
 OmsiCrashProbe PluginFinalize
 ExecutablePageCache hits=900 misses=100 slots=1024
 ModulePageCache hits=950 misses=50 slots=4096
-ProbeHealth droppedLogLines=2 droppedSignatureUpdates=3 signatureTableOverflowOccurrences=4 handlerInternalFaults=0 signatureSlots=128
+StackSignatureCache hits=990 misses=10 slots=128 words=48
+ProbeHealth droppedLogLines=2 droppedSignatureUpdates=3 signatureTableOverflowOccurrences=4 handlerInternalFaults=0 activeHandlers=0 shutdownWaitTimedOut=0 signatureSlots=128

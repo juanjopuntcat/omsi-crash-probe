@@ -87,6 +87,15 @@ The fixtures cover Code 8 ownership buckets and precursors, Direct3D/texture
 errors, old and current VAS snapshot formats, threshold crossings, and KnownRVA
 signature labels. The GitHub build workflow runs the same suite.
 
+Run the x86 white-box handler tests without launching OMSI:
+
+```bat
+Test-OmsiCrashProbeCore.bat
+```
+
+They cover exact stack-cache hits and collisions, signature-table saturation,
+handler-side lock contention, and saturating counters.
+
 ## Large Address Aware
 
 `Set-OmsiLargeAddressAware.bat` enables the PE
@@ -262,6 +271,9 @@ OmsiCrashProbe.dll
   allocation in the exception path.
 - Caches the loaded module list at plugin startup so stack/RVA resolution does
   not take Toolhelp snapshots during noisy exception bursts.
+- Builds that immutable module snapshot before installing the handler. Modules
+  loaded later remain unresolved until another session because querying the
+  Windows loader from exception context could deadlock on the loader lock.
 - Filters stack return candidates to executable committed memory, so pointers
   into module data sections are not treated as probable caller frames.
 - Keeps memory/resource snapshots sparse because the virtual-address walk is
@@ -270,9 +282,17 @@ OmsiCrashProbe.dll
   the existing executable-memory filter and exact exception signatures.
 - Caches page-to-module lookups, including negative results, so repeated stack
   scans do not linearly search the complete module table for every stack word.
+- Reuses a computed signature only when all 48 captured stack words plus the
+  exception identity match exactly. This avoids repeated module/protection
+  resolution without sampling or merging different raw stacks.
 - Uses non-blocking handler-side logging locks and bounded signature-table
   overflow accounting so probe contention cannot become a deadlock or log
   storm. Final `ProbeHealth` counters make any dropped diagnostics explicit.
+- Keeps one append-only `probe.log` handle per session and emits each record
+  with one `WriteFile`; it deliberately avoids synchronous flushes in exception
+  context because they would stall the game on every diagnostic record.
+- Stops accepting callbacks before finalization and waits up to two seconds for
+  active handlers to leave DLL code before destroying shared state.
 - Delphi object/string decoding uses guarded memory reads and simply omits the
   decoded fields when the guessed layout is not valid.
 - Known-RVA classification is static text based on local Ghidra analysis; it

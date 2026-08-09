@@ -639,12 +639,18 @@ function Analyze-ProbeLog {
         ModulePageCacheHits = [UInt64]0
         ModulePageCacheMisses = [UInt64]0
         ModulePageCacheSlots = [UInt64]0
+        StackSignatureCacheHits = [UInt64]0
+        StackSignatureCacheMisses = [UInt64]0
+        StackSignatureCacheSlots = [UInt64]0
+        StackSignatureCacheWords = [UInt64]0
         ExecutableLargeAddressAware = $null
         ExecutableCharacteristics = ''
         DroppedLogLines = [UInt64]0
         DroppedSignatureUpdates = [UInt64]0
         SignatureTableOverflowOccurrences = [UInt64]0
         HandlerInternalFaults = [UInt64]0
+        ActiveHandlers = [UInt64]0
+        ShutdownWaitTimedOut = [UInt64]0
         SignatureSlots = [UInt64]0
         Started = $false
         Finalized = $false
@@ -755,11 +761,21 @@ function Analyze-ProbeLog {
             continue
         }
 
-        if ($line -match '^ProbeHealth droppedLogLines=(?<lines>\d+) droppedSignatureUpdates=(?<updates>\d+) signatureTableOverflowOccurrences=(?<overflow>\d+) handlerInternalFaults=(?<faults>\d+) signatureSlots=(?<slots>\d+)') {
+        if ($line -match '^StackSignatureCache hits=(?<hits>\d+) misses=(?<misses>\d+) slots=(?<slots>\d+) words=(?<words>\d+)') {
+            $result.StackSignatureCacheHits = [UInt64]$Matches.hits
+            $result.StackSignatureCacheMisses = [UInt64]$Matches.misses
+            $result.StackSignatureCacheSlots = [UInt64]$Matches.slots
+            $result.StackSignatureCacheWords = [UInt64]$Matches.words
+            continue
+        }
+
+        if ($line -match '^ProbeHealth droppedLogLines=(?<lines>\d+) droppedSignatureUpdates=(?<updates>\d+) signatureTableOverflowOccurrences=(?<overflow>\d+) handlerInternalFaults=(?<faults>\d+)(?: activeHandlers=(?<active>\d+) shutdownWaitTimedOut=(?<timeout>\d+))? signatureSlots=(?<slots>\d+)') {
             $result.DroppedLogLines = [UInt64]$Matches.lines
             $result.DroppedSignatureUpdates = [UInt64]$Matches.updates
             $result.SignatureTableOverflowOccurrences = [UInt64]$Matches.overflow
             $result.HandlerInternalFaults = [UInt64]$Matches.faults
+            $result.ActiveHandlers = Get-OptionalUInt64 $Matches 'active'
+            $result.ShutdownWaitTimedOut = Get-OptionalUInt64 $Matches 'timeout'
             $result.SignatureSlots = [UInt64]$Matches.slots
             continue
         }
@@ -1278,8 +1294,13 @@ else {
         $moduleCacheHitRate = if ($moduleCacheTotal -gt 0) { [math]::Round(100 * $probeSummary.ModulePageCacheHits / $moduleCacheTotal, 1) } else { 0 }
         $lines.Add("- Module-page cache: $($probeSummary.ModulePageCacheHits) hits, $($probeSummary.ModulePageCacheMisses) misses, $moduleCacheHitRate% hit rate")
     }
+    if ($probeSummary.StackSignatureCacheHits -gt 0 -or $probeSummary.StackSignatureCacheMisses -gt 0) {
+        $stackCacheTotal = $probeSummary.StackSignatureCacheHits + $probeSummary.StackSignatureCacheMisses
+        $stackCacheHitRate = if ($stackCacheTotal -gt 0) { [math]::Round(100 * $probeSummary.StackSignatureCacheHits / $stackCacheTotal, 1) } else { 0 }
+        $lines.Add("- Stack-signature cache: $($probeSummary.StackSignatureCacheHits) hits, $($probeSummary.StackSignatureCacheMisses) misses, $stackCacheHitRate% hit rate, $($probeSummary.StackSignatureCacheWords) exact words")
+    }
     if ($probeSummary.SignatureSlots -gt 0) {
-        $lines.Add("- Handler health: $($probeSummary.DroppedLogLines) dropped log lines, $($probeSummary.DroppedSignatureUpdates) dropped signature updates, $($probeSummary.SignatureTableOverflowOccurrences) overflow occurrences, $($probeSummary.HandlerInternalFaults) internal faults, $($probeSummary.SignatureSlots) signature slots")
+        $lines.Add("- Handler health: $($probeSummary.DroppedLogLines) dropped log lines, $($probeSummary.DroppedSignatureUpdates) dropped signature updates, $($probeSummary.SignatureTableOverflowOccurrences) overflow occurrences, $($probeSummary.HandlerInternalFaults) internal faults, $($probeSummary.ActiveHandlers) active at shutdown, shutdown timeout $($probeSummary.ShutdownWaitTimedOut), $($probeSummary.SignatureSlots) signature slots")
     }
     $lines.Add('')
 

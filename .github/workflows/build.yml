@@ -16,9 +16,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Configure MSVC x86 tools
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
       - name: Test session analyzer fixtures
         shell: powershell
         run: .\Test-AnalyzeOmsiCrashSession.ps1
+
+      - name: Test probe handler core
+        shell: cmd
+        run: Test-OmsiCrashProbeCore.bat
 
       - name: Configure CMake
         run: cmake -S . -B build-x86 -A Win32

@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <climits>
 
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "user32.lib")
@@ -28,6 +29,7 @@ static bool g_lockReady = false;
 // Absolute path to <OMSI root>\OmsiCrashProbe\probe.log, built at runtime from
 // the path of the running Omsi.exe.
 static char g_logPath[MAX_PATH] = {};
+static HANDLE g_logFile = INVALID_HANDLE_VALUE;
 
 // Thread-local reentrancy guard. If logging itself triggers another exception,
 // the nested call returns immediately instead of recursively logging forever.
@@ -36,6 +38,9 @@ static volatile LONG g_droppedLogLines = 0;
 static volatile LONG g_droppedSignatureUpdates = 0;
 static volatile LONG g_signatureTableOverflowOccurrences = 0;
 static volatile LONG g_handlerInternalFaults = 0;
+static volatile LONG g_activeHandlers = 0;
+static volatile LONG g_shutdownRequested = 0;
+static volatile LONG g_shutdownWaitTimedOut = 0;
 
 // Limit how many repeated signatures we remember in one OMSI process. This is
 // deliberately fixed-size and allocation-free because exception logging should
@@ -84,6 +89,21 @@ struct SignatureStats {
 
 static SignatureStats g_signatureStats[kMaxSignatureStats] = {};
 
+static const int kStackSignatureCacheSize = 128;
+struct StackSignatureCacheEntry {
+    bool used;
+    DWORD code;
+    uintptr_t exceptionRva;
+    uintptr_t param0;
+    uintptr_t param2;
+    int wordCount;
+    DWORD words[kMaxStackCandidates];
+    ExceptionSignature signature;
+};
+static StackSignatureCacheEntry g_stackSignatureCache[kStackSignatureCacheSize] = {};
+static volatile LONG g_stackSignatureCacheHits = 0;
+static volatile LONG g_stackSignatureCacheMisses = 0;
+
 struct AddressSpaceSnapshot {
     unsigned long long freeBytes;
     unsigned long long largestFreeBytes;
@@ -110,6 +130,17 @@ static volatile LONG g_vasThresholdLogged[kVasThresholdCount] = {};
 
 static void FormatSystemTime(const SYSTEMTIME& time, char* buffer, size_t bufferSize);
 
+static void IncrementSaturating(volatile LONG* counter) {
+    LONG current = InterlockedCompareExchange(counter, 0, 0);
+    while (current < LONG_MAX) {
+        LONG observed = InterlockedCompareExchange(counter, current + 1, current);
+        if (observed == current) {
+            return;
+        }
+        current = observed;
+    }
+}
+
 // Never wait for a lock from inside the vectored exception handler. The thread
 // owning it may itself be suspended or failing, and blocking here could turn a
 // recoverable OMSI exception into a process-wide deadlock.
@@ -126,6 +157,26 @@ static bool AcquireLogLock() {
     return true;
 }
 
+static bool OpenLogFile() {
+    if (!g_logPath[0]) {
+        return false;
+    }
+
+    if (g_logFile != INVALID_HANDLE_VALUE) {
+        return true;
+    }
+
+    g_logFile = CreateFileA(
+        g_logPath,
+        FILE_APPEND_DATA,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    return g_logFile != INVALID_HANDLE_VALUE;
+}
+
 // Append one CRLF-terminated line to probe.log. This function avoids C++ iostreams
 // and heap-heavy logging so it remains small and predictable inside OMSI.
 static void AppendLine(const char* line) {
@@ -134,23 +185,34 @@ static void AppendLine(const char* line) {
     }
 
     if (!AcquireLogLock()) {
-        InterlockedIncrement(&g_droppedLogLines);
+        IncrementSaturating(&g_droppedLogLines);
         return;
     }
-    HANDLE file = CreateFileA(
-        g_logPath,
-        FILE_APPEND_DATA,
-        FILE_SHARE_READ | FILE_SHARE_WRITE,
-        nullptr,
-        OPEN_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        nullptr);
-
-    if (file != INVALID_HANDLE_VALUE) {
+    if (g_logFile != INVALID_HANDLE_VALUE) {
+        char record[4096] = {};
+        int length = snprintf(record, sizeof(record), "%s\r\n", line);
         DWORD written = 0;
-        WriteFile(file, line, static_cast<DWORD>(strlen(line)), &written, nullptr);
-        WriteFile(file, "\r\n", 2, &written, nullptr);
-        CloseHandle(file);
+        DWORD requested = length > 0 && length < static_cast<int>(sizeof(record))
+            ? static_cast<DWORD>(length)
+            : static_cast<DWORD>(sizeof(record) - 1);
+        if (!WriteFile(g_logFile, record, requested, &written, nullptr) || written != requested) {
+            IncrementSaturating(&g_droppedLogLines);
+        }
+    }
+    else {
+        IncrementSaturating(&g_droppedLogLines);
+    }
+    LeaveCriticalSection(&g_logLock);
+}
+
+static void CloseLogFile() {
+    if (!g_lockReady || !AcquireLogLock()) {
+        return;
+    }
+
+    if (g_logFile != INVALID_HANDLE_VALUE) {
+        CloseHandle(g_logFile);
+        g_logFile = INVALID_HANDLE_VALUE;
     }
     LeaveCriticalSection(&g_logLock);
 }
@@ -846,7 +908,7 @@ static bool FindModuleForAddress(uintptr_t address, ModuleInfo* out) {
     LONG cachedKey = g_modulePageKeys[cacheIndex];
     LONG cachedValue = g_modulePageValues[cacheIndex];
     if (cachedKey == static_cast<LONG>(pageBase) && cachedValue != 0) {
-        InterlockedIncrement(&g_modulePageCacheHits);
+        IncrementSaturating(&g_modulePageCacheHits);
         if (cachedValue == 1) {
             return false;
         }
@@ -863,7 +925,7 @@ static bool FindModuleForAddress(uintptr_t address, ModuleInfo* out) {
         }
     }
 
-    InterlockedIncrement(&g_modulePageCacheMisses);
+    IncrementSaturating(&g_modulePageCacheMisses);
     int foundIndex = -1;
     for (int i = 0; i < g_moduleCacheCount; ++i) {
         const ModuleInfo& module = g_moduleCache[i];
@@ -888,11 +950,11 @@ static bool IsExecutableAddress(uintptr_t address) {
     LONG cachedKey = g_executablePageKeys[cacheIndex];
     LONG cachedValue = g_executablePageValues[cacheIndex];
     if (cachedKey == static_cast<LONG>(pageBase) && cachedValue != 0) {
-        InterlockedIncrement(&g_executablePageCacheHits);
+        IncrementSaturating(&g_executablePageCacheHits);
         return cachedValue == 2;
     }
 
-    InterlockedIncrement(&g_executablePageCacheMisses);
+    IncrementSaturating(&g_executablePageCacheMisses);
     MEMORY_BASIC_INFORMATION mbi = {};
     if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
         return false;
@@ -939,16 +1001,31 @@ static void LogModulePageCacheStats() {
     AppendLine(line);
 }
 
+static void LogStackSignatureCacheStats() {
+    char line[256] = {};
+    snprintf(
+        line,
+        sizeof(line),
+        "StackSignatureCache hits=%ld misses=%ld slots=%d words=%d",
+        g_stackSignatureCacheHits,
+        g_stackSignatureCacheMisses,
+        kStackSignatureCacheSize,
+        kMaxStackCandidates);
+    AppendLine(line);
+}
+
 static void LogProbeHealthStats() {
     char line[256] = {};
     snprintf(
         line,
         sizeof(line),
-        "ProbeHealth droppedLogLines=%ld droppedSignatureUpdates=%ld signatureTableOverflowOccurrences=%ld handlerInternalFaults=%ld signatureSlots=%d",
+        "ProbeHealth droppedLogLines=%ld droppedSignatureUpdates=%ld signatureTableOverflowOccurrences=%ld handlerInternalFaults=%ld activeHandlers=%ld shutdownWaitTimedOut=%ld signatureSlots=%d",
         g_droppedLogLines,
         g_droppedSignatureUpdates,
         g_signatureTableOverflowOccurrences,
         g_handlerInternalFaults,
+        g_activeHandlers,
+        g_shutdownWaitTimedOut,
         kMaxSignatureStats);
     AppendLine(line);
 }
@@ -1126,7 +1203,7 @@ static bool UpdateSignatureStats(const ExceptionSignature& signature, DWORD* occ
     GetLocalTime(&now);
 
     if (!AcquireLogLock()) {
-        InterlockedIncrement(&g_droppedSignatureUpdates);
+        IncrementSaturating(&g_droppedSignatureUpdates);
         return false;
     }
 
@@ -1154,12 +1231,14 @@ static bool UpdateSignatureStats(const ExceptionSignature& signature, DWORD* occ
     if (!slot) {
         // Logging every untracked occurrence after saturation creates an
         // unbounded slow path. Preserve the aggregate overflow count instead.
-        InterlockedIncrement(&g_signatureTableOverflowOccurrences);
+        IncrementSaturating(&g_signatureTableOverflowOccurrences);
         LeaveCriticalSection(&g_logLock);
         return false;
     }
 
-    slot->count += 1;
+    if (slot->count < ULONG_MAX) {
+        slot->count += 1;
+    }
     slot->lastSeen = now;
     *occurrence = slot->count;
 
@@ -1311,11 +1390,11 @@ static void BuildSignature(
 // Collect stack values that point inside loaded modules. For Delphi exceptions,
 // these candidates are often more useful than ExceptionAddress because the
 // exception itself is raised through KERNELBASE!RaiseException.
-static int CollectStackCandidates(CONTEXT* ctx, StackCandidate* candidates, int maxCandidates) {
+static int CaptureStackWords(CONTEXT* ctx, DWORD* words, int maxWords) {
 #if defined(_M_IX86)
     int count = 0;
     DWORD* stack = reinterpret_cast<DWORD*>(ctx->Esp);
-    for (int i = 0; i < kMaxStackCandidates && count < maxCandidates; ++i) {
+    for (int i = 0; i < kMaxStackCandidates && count < maxWords; ++i) {
         DWORD value = 0;
         __try {
             value = stack[i];
@@ -1324,6 +1403,26 @@ static int CollectStackCandidates(CONTEXT* ctx, StackCandidate* candidates, int 
             break;
         }
 
+        words[count++] = value;
+    }
+    return count;
+#else
+    (void)ctx;
+    (void)words;
+    (void)maxWords;
+    return 0;
+#endif
+}
+
+static int CollectStackCandidates(
+    const DWORD* words,
+    int wordCount,
+    StackCandidate* candidates,
+    int maxCandidates) {
+#if defined(_M_IX86)
+    int count = 0;
+    for (int i = 0; i < wordCount && count < maxCandidates; ++i) {
+        DWORD value = words[i];
         ModuleInfo stackModule = {};
         if (FindModuleForAddress(value, &stackModule) && IsExecutableAddress(value)) {
             candidates[count].stackOffset = i * 4;
@@ -1335,11 +1434,93 @@ static int CollectStackCandidates(CONTEXT* ctx, StackCandidate* candidates, int 
     }
     return count;
 #else
-    (void)ctx;
+    (void)words;
+    (void)wordCount;
     (void)candidates;
     (void)maxCandidates;
     return 0;
 #endif
+}
+
+static unsigned StackSignatureCacheIndex(
+    DWORD code,
+    uintptr_t exceptionRva,
+    uintptr_t param0,
+    uintptr_t param2,
+    const DWORD* words,
+    int wordCount) {
+    DWORD hash = 2166136261u;
+    const DWORD fixed[] = {
+        code,
+        static_cast<DWORD>(exceptionRva),
+        static_cast<DWORD>(param0),
+        static_cast<DWORD>(param2),
+        static_cast<DWORD>(wordCount)
+    };
+    for (int i = 0; i < static_cast<int>(sizeof(fixed) / sizeof(fixed[0])); ++i) {
+        hash = (hash ^ fixed[i]) * 16777619u;
+    }
+    for (int i = 0; i < wordCount; ++i) {
+        hash = (hash ^ words[i]) * 16777619u;
+    }
+    return hash % kStackSignatureCacheSize;
+}
+
+static bool TryGetStackSignatureCache(
+    DWORD code,
+    uintptr_t exceptionRva,
+    uintptr_t param0,
+    uintptr_t param2,
+    const DWORD* words,
+    int wordCount,
+    ExceptionSignature* signature) {
+    if (!AcquireLogLock()) {
+        IncrementSaturating(&g_stackSignatureCacheMisses);
+        return false;
+    }
+
+    unsigned index = StackSignatureCacheIndex(code, exceptionRva, param0, param2, words, wordCount);
+    const StackSignatureCacheEntry& entry = g_stackSignatureCache[index];
+    bool matches = entry.used &&
+        entry.code == code &&
+        entry.exceptionRva == exceptionRva &&
+        entry.param0 == param0 &&
+        entry.param2 == param2 &&
+        entry.wordCount == wordCount &&
+        memcmp(entry.words, words, wordCount * sizeof(words[0])) == 0;
+    if (matches) {
+        *signature = entry.signature;
+    }
+    LeaveCriticalSection(&g_logLock);
+
+    IncrementSaturating(matches ? &g_stackSignatureCacheHits : &g_stackSignatureCacheMisses);
+    return matches;
+}
+
+static void StoreStackSignatureCache(
+    DWORD code,
+    uintptr_t exceptionRva,
+    uintptr_t param0,
+    uintptr_t param2,
+    const DWORD* words,
+    int wordCount,
+    const ExceptionSignature& signature) {
+    if (!AcquireLogLock()) {
+        return;
+    }
+
+    unsigned index = StackSignatureCacheIndex(code, exceptionRva, param0, param2, words, wordCount);
+    StackSignatureCacheEntry& entry = g_stackSignatureCache[index];
+    entry.used = false;
+    entry.code = code;
+    entry.exceptionRva = exceptionRva;
+    entry.param0 = param0;
+    entry.param2 = param2;
+    entry.wordCount = wordCount;
+    memcpy(entry.words, words, wordCount * sizeof(words[0]));
+    entry.signature = signature;
+    entry.used = true;
+    LeaveCriticalSection(&g_logLock);
 }
 
 // Snapshot loaded modules once at plugin startup. This gives us base addresses
@@ -1386,16 +1567,50 @@ static void LogContext(PEXCEPTION_POINTERS info) {
     bool hasModule = FindModuleForAddress(address, &module);
     uintptr_t exceptionRva = hasModule ? address - module.base : 0;
 
-    StackCandidate candidates[kMaxStackCandidates] = {};
-    int candidateCount = CollectStackCandidates(ctx, candidates, kMaxStackCandidates);
-
+    DWORD stackWords[kMaxStackCandidates] = {};
+    int stackWordCount = CaptureStackWords(ctx, stackWords, kMaxStackCandidates);
+    uintptr_t param0 = er->NumberParameters > 0 ? er->ExceptionInformation[0] : 0;
+    uintptr_t param2 = er->NumberParameters > 2 ? er->ExceptionInformation[2] : 0;
     ExceptionSignature signature = {};
-    BuildSignature(er, exceptionRva, candidates, candidateCount, &signature);
+    StackCandidate candidates[kMaxStackCandidates] = {};
+    int candidateCount = 0;
+    bool stackSignatureCacheHit = TryGetStackSignatureCache(
+        er->ExceptionCode,
+        exceptionRva,
+        param0,
+        param2,
+        stackWords,
+        stackWordCount,
+        &signature);
+    if (!stackSignatureCacheHit) {
+        candidateCount = CollectStackCandidates(
+            stackWords,
+            stackWordCount,
+            candidates,
+            kMaxStackCandidates);
+        BuildSignature(er, exceptionRva, candidates, candidateCount, &signature);
+        StoreStackSignatureCache(
+            er->ExceptionCode,
+            exceptionRva,
+            param0,
+            param2,
+            stackWords,
+            stackWordCount,
+            signature);
+    }
 
     DWORD occurrence = 0;
     bool summaryOnly = false;
     if (!UpdateSignatureStats(signature, &occurrence, &summaryOnly)) {
         return;
+    }
+
+    if (!summaryOnly && stackSignatureCacheHit) {
+        candidateCount = CollectStackCandidates(
+            stackWords,
+            stackWordCount,
+            candidates,
+            kMaxStackCandidates);
     }
 
     char line[2048] = {};
@@ -1540,7 +1755,13 @@ static void LogContext(PEXCEPTION_POINTERS info) {
 // EXCEPTION_CONTINUE_SEARCH is critical: it means "we only observed this; keep
 // dispatching to OMSI/Delphi/Windows exactly as before."
 static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS info) {
-    if (g_insideHandler) {
+    if (g_insideHandler || InterlockedCompareExchange(&g_shutdownRequested, 0, 0) != 0) {
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+
+    InterlockedIncrement(&g_activeHandlers);
+    if (InterlockedCompareExchange(&g_shutdownRequested, 0, 0) != 0) {
+        InterlockedDecrement(&g_activeHandlers);
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
@@ -1551,10 +1772,12 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS info) {
             LogContext(info);
         }
         __except (EXCEPTION_EXECUTE_HANDLER) {
-            InterlockedIncrement(&g_handlerInternalFaults);
+            IncrementSaturating(&g_handlerInternalFaults);
         }
         g_insideHandler = false;
     }
+
+    InterlockedDecrement(&g_activeHandlers);
 
     return EXCEPTION_CONTINUE_SEARCH;
 }
@@ -1563,6 +1786,8 @@ static LONG CALLBACK VectoredExceptionHandler(PEXCEPTION_POINTERS info) {
 // with one 32-bit argument, so the export is __stdcall(void*).
 extern "C" void __stdcall PluginStart(void* omsiContext) {
     (void)omsiContext;
+    InterlockedExchange(&g_shutdownRequested, 0);
+    InterlockedExchange(&g_shutdownWaitTimedOut, 0);
 
     if (!g_lockReady) {
         InitializeCriticalSection(&g_logLock);
@@ -1570,9 +1795,15 @@ extern "C" void __stdcall PluginStart(void* omsiContext) {
     }
 
     BuildLogPath();
+    OpenLogFile();
     AppendLine("OmsiCrashProbe PluginStart");
     LogExecutableFlags();
     LogMemorySnapshot("PluginStart");
+
+    // Build the immutable session snapshot before enabling the handler. Loader
+    // enumeration is intentionally never attempted from exception context.
+    RefreshModuleCache();
+    LogLoadedModules();
 
     // Install with first priority so we can see first-chance exceptions before
     // OMSI's own handlers turn them into generic popups or logfile messages.
@@ -1581,16 +1812,27 @@ extern "C" void __stdcall PluginStart(void* omsiContext) {
         AppendLine(g_vectoredHandler ? "Vectored exception handler installed" : "Failed to install vectored exception handler");
     }
 
-    RefreshModuleCache();
-    LogLoadedModules();
 }
 
 // OMSI plugin shutdown hook. Remove the vectored handler and destroy the lock so
 // a clean OMSI exit does not leave process-global state dangling.
 extern "C" void __stdcall PluginFinalize() {
+    InterlockedExchange(&g_shutdownRequested, 1);
     if (g_vectoredHandler) {
         RemoveVectoredExceptionHandler(g_vectoredHandler);
         g_vectoredHandler = nullptr;
+    }
+
+    // Remove prevents new callbacks. Existing callbacks are allocation-free
+    // and non-blocking; give them a bounded window to leave DLL code before the
+    // plugin lock and image can be torn down.
+    int waitMilliseconds = 0;
+    while (InterlockedCompareExchange(&g_activeHandlers, 0, 0) != 0 && waitMilliseconds < 2000) {
+        Sleep(1);
+        waitMilliseconds += 1;
+    }
+    if (InterlockedCompareExchange(&g_activeHandlers, 0, 0) != 0) {
+        InterlockedExchange(&g_shutdownWaitTimedOut, 1);
     }
 
     AppendLine("OmsiCrashProbe PluginFinalize");
@@ -1598,7 +1840,9 @@ extern "C" void __stdcall PluginFinalize() {
     LogSignatureSummary();
     LogExecutablePageCacheStats();
     LogModulePageCacheStats();
+    LogStackSignatureCacheStats();
     LogProbeHealthStats();
+    CloseLogFile();
 
     if (g_lockReady) {
         DeleteCriticalSection(&g_logLock);
@@ -1613,6 +1857,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved) {
     (void)reserved;
 
     if (reason == DLL_PROCESS_DETACH && g_vectoredHandler) {
+        InterlockedExchange(&g_shutdownRequested, 1);
         RemoveVectoredExceptionHandler(g_vectoredHandler);
         g_vectoredHandler = nullptr;
     }

@@ -218,6 +218,8 @@ OmsiCrashProbe.dll
   allocation in the exception path.
 - Caches the loaded module list at plugin startup so stack/RVA resolution does
   not take Toolhelp snapshots during noisy exception bursts.
+- Filters stack return candidates to executable committed memory, so pointers
+  into module data sections are not treated as probable caller frames.
 - Keeps memory/resource snapshots sparse because the virtual-address walk is
   useful but should not run on every repeated first-chance exception.
 - Delphi object/string decoding uses guarded memory reads and simply omits the

@@ -280,14 +280,14 @@ function Get-SystemErrorCode8Bucket {
 
     $text = if ($null -eq $Context) { '' } else { $Context.ToLowerInvariant() }
 
-    if ($text -match 'texture|textur|direct|d3d|grafik|bitmap|image|bild|gdi|cv\.calculate') {
-        return 'graphics / texture / GDI pressure'
-    }
-    if ($text -match 'vehicle|vehicles\\|\.bus|\.ovh|\.o3d|script|var|plugin|sound|wav') {
+    if ($text -match 'cv\.calculate|vehicle|vehicles\\|\.bus|\.ovh|\.o3d|script|var|plugin|sound|wav') {
         return 'vehicle / script / asset owner'
     }
     if ($text -match 'killnotneeded|knnc|notneeded|bus') {
         return 'AI bus cleanup / memory management'
+    }
+    if ($text -match 'texture|textur|direct|d3d|grafik|bitmap|image|bild|gdi') {
+        return 'graphics / texture / GDI pressure'
     }
     if ($text -match 'svs|system|resource|ressource|speicher|memory') {
         return 'system/resource pressure'
@@ -362,7 +362,7 @@ function Get-KnownErrorCatalog {
         },
         [pscustomobject]@{
             Id = 'system-error-code-8'
-            Match = '(?i)Systemfehler\.\s+Code:\s*8|not enough memory resources|No hay suficientes recursos de memoria'
+            Match = '(?i)Systemfehler\.\s+Code:\s*8'
             Family = 'Memory / resource pressure'
             Origin = 'Win32 GetLastError path surfaced by OMSI'
             Next = 'Check private memory, VAS fragmentation, GDI, and USER counts.'
@@ -465,7 +465,7 @@ function Analyze-Logfile {
         }
 
         $categoryHits = @()
-        if ($line -match '(?i)Systemfehler\.\s+Code:\s*8|No hay suficientes recursos de memoria|not enough memory resources') { $categoryHits += 'Systemfehler Code 8 / OS memory resources' }
+        if ($line -match '(?i)Systemfehler\.\s+Code:\s*8') { $categoryHits += 'Systemfehler Code 8 / OS memory resources' }
         if ($line -match '(?i)E_OUTOFMEMORY|D3DERR_OUTOFVIDEOMEMORY|out of memory') { $categoryHits += 'DirectX/texture out of memory' }
         if ($line -match '(?i)Texturladen - Direct9 Error') { $categoryHits += 'Texture load Direct9 error' }
         if ($line -match '(?i)Texture ".+" failed!') { $categoryHits += 'Texture failed' }
@@ -785,7 +785,15 @@ function New-NearestMemoryRows {
         Sort-Object @{ Expression = { $_.TimeSeconds - $targetSeconds }; Descending = $false } |
         Select-Object -First 1)
 
-    @($before + $after | ForEach-Object {
+    $seen = @{}
+    @($before + $after | Where-Object {
+        $key = '{0}|{1}|{2}' -f $_.Time, $_.Reason, $_.VasLargestFreeMB
+        if ($seen.ContainsKey($key)) {
+            return $false
+        }
+        $seen[$key] = $true
+        return $true
+    } | ForEach-Object {
         $side = if ($_.TimeSeconds -le $targetSeconds) { 'before' } else { 'after' }
         [pscustomobject]@{
             Signal = $Signal

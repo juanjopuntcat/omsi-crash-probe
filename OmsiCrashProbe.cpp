@@ -656,6 +656,23 @@ static bool FindModuleForAddress(uintptr_t address, ModuleInfo* out) {
     return FindModuleInCache(address, out);
 }
 
+static bool IsExecutableAddress(uintptr_t address) {
+    MEMORY_BASIC_INFORMATION mbi = {};
+    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
+        return false;
+    }
+
+    if (mbi.State != MEM_COMMIT || (mbi.Protect & PAGE_GUARD) || (mbi.Protect & PAGE_NOACCESS)) {
+        return false;
+    }
+
+    DWORD protection = mbi.Protect & 0xFF;
+    return protection == PAGE_EXECUTE ||
+        protection == PAGE_EXECUTE_READ ||
+        protection == PAGE_EXECUTE_READWRITE ||
+        protection == PAGE_EXECUTE_WRITECOPY;
+}
+
 static const KnownOmsiRva* DescribeOmsiRva(uintptr_t rva) {
     for (int i = 0; i < static_cast<int>(sizeof(kKnownOmsiRvas) / sizeof(kKnownOmsiRvas[0])); ++i) {
         if (rva >= kKnownOmsiRvas[i].start && rva <= kKnownOmsiRvas[i].end) {
@@ -1024,7 +1041,7 @@ static int CollectStackCandidates(CONTEXT* ctx, StackCandidate* candidates, int 
         }
 
         ModuleInfo stackModule = {};
-        if (FindModuleForAddress(value, &stackModule)) {
+        if (FindModuleForAddress(value, &stackModule) && IsExecutableAddress(value)) {
             candidates[count].stackOffset = i * 4;
             candidates[count].value = value;
             candidates[count].rva = value - stackModule.base;

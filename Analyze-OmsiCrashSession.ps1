@@ -416,7 +416,7 @@ function Get-KnownErrorCatalog {
         },
         [pscustomobject]@{
             Id = 'invalid-variable-name'
-            Match = '(?i)Variablenname.*ung.ltig|invalid variable'
+            Match = '(?i)Variablenname.*ung(?:.|ue)ltig|invalid variable'
             Family = 'Script / variable binding'
             Origin = 'OMSI script command parser'
             Next = 'Use command text and vehicle path already present in logfile.'
@@ -458,6 +458,7 @@ function Analyze-Logfile {
         TextureFailures = New-Counter
         Direct9TextureErrors = New-Counter
         Direct3DResetErrors = New-Counter
+        NumericScriptContexts = New-Object 'System.Collections.Generic.List[object]'
         TimeFirst = ''
         TimeLast = ''
         SystemErrorFirst = ''
@@ -477,7 +478,9 @@ function Analyze-Logfile {
     $previousWasSystemCode8 = $false
     $pendingSystemCode8Time = ''
     $recentLogLines = New-Object 'System.Collections.Generic.Queue[object]'
-    foreach ($line in Get-Content -LiteralPath $Path) {
+    $logLines = @(Get-Content -LiteralPath $Path)
+    for ($lineIndex = 0; $lineIndex -lt $logLines.Count; ++$lineIndex) {
+        $line = $logLines[$lineIndex]
         $result.LineCount += 1
 
         $lineTime = ''
@@ -502,6 +505,7 @@ function Analyze-Logfile {
         if ($line -match '(?i)Zugriffsverletzung|Access violation|AccessViolation') { $categoryHits += 'Access violation' }
         if ($line -match '(?i)Fehler bei Bereich|Bereichspr|Argument ausserhalb|Argument au.erhalb|Listenindex') { $categoryHits += 'Bounds/list/range checks' }
         if ($line -match '(?i)Gleitkomma|floating|division durch null|ZeroDivide') { $categoryHits += 'Floating point/conversion' }
+        if ($line -match '(?i)Variablenname.*ung(?:.|ue)ltig|invalid variable|SC_ErrorInCommand') { $categoryHits += 'Script variable/command' }
         if ($line -match '(?i)Bitmap ist|ungueltiges Bild|ung.ltiges Bild|Unbekannte Bilddatei') { $categoryHits += 'Bitmap/image format' }
         if ($line -match '(?i)The requested resource is in use|angeforderte Ressource') { $categoryHits += 'Resource in use' }
 
@@ -513,6 +517,21 @@ function Analyze-Logfile {
             if ($line -match $knownError.Match) {
                 Add-Count $result.KnownErrorPatterns $knownError.Id
             }
+        }
+
+        if ($result.NumericScriptContexts.Count -lt 20 -and
+            $line -match '(?i)Gleitkommawert|Gleitkommadivision|ZeroDivide|division durch null|Variablenname.*ung(?:.|ue)ltig|invalid variable|SC_ErrorInCommand') {
+            $contextStart = [math]::Max(0, $lineIndex - 2)
+            $contextEnd = [math]::Min($logLines.Count - 1, $lineIndex + 2)
+            $nearby = for ($contextIndex = $contextStart; $contextIndex -le $contextEnd; ++$contextIndex) {
+                $prefix = if ($contextIndex -eq $lineIndex) { '>> ' } else { '' }
+                $prefix + $logLines[$contextIndex].Trim()
+            }
+            $result.NumericScriptContexts.Add([pscustomobject]@{
+                Time = $lineTime
+                Family = if ($line -match '(?i)Variablenname|invalid variable|SC_ErrorInCommand') { 'Script command' } else { 'Numeric / floating point' }
+                Context = $nearby -join ' || '
+            })
         }
 
         if ($line -match '(?i)Systemfehler\.\s+Code:\s*8') {
@@ -1133,6 +1152,10 @@ else {
     $lines.Add('### Known error patterns')
     $lines.Add('')
     Add-MarkdownTable $lines @('Pattern', 'Family', 'Origin', 'Count', 'Next') (New-KnownErrorRows $logSummary.KnownErrorPatterns $knownErrorCatalog $Top)
+
+    $lines.Add('### Numeric and script diagnostic context')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Time', 'Family', 'Context') @($logSummary.NumericScriptContexts | ForEach-Object { $_ })
 
     $lines.Add('### Systemfehler Code 8 contexts')
     $lines.Add('')

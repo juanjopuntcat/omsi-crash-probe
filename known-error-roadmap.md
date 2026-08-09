@@ -18,8 +18,8 @@ even considered.
 | `Systemfehler. Code: 8` / OS memory resources | High | `0x0002A000..0x0002A09E`, `0x000769E4..0x0007720C`, `0x002D753C..0x002D77B3` | Code 8 log lines, following context tag, VAS/GDI/USER snapshots | Analyzer now separates Code 8 contexts and emits a VAS exhaustion verdict with min largest-free block, dominant context, and texture signals. |
 | Bitmap/image failures | High | `0x00070890..0x000708B2`, `0x000708CC..0x00070916`, `0x00072F90..0x00073009`, `0x00078964..0x0007899F`, `0x00098000..0x00098017` | `Bitmap ist ungueltig`, `Unbekannte Bilddateierweiterung`, `Ungueltiges Bild`, `Systemressourcen erschoepft` | Add analyzer hints that tie bitmap failures to GDI/resource counters when snapshots exist. |
 | Delphi range/list/argument checks | High | `0x0002ADCC..0x0002C81F`, `0x0004DD85..0x0004DDA9`, `0x000B57F4..0x000B58ED`, `0x00120818..0x00120863`, `0x0011FF8C..0x001243B7`, `0x0020AEA4..0x0020CC14`, `0x0034B148..0x0034C858` | `Fehler bei Bereichspruefung`, `Listenindex ueberschreitet das Maximum`, `Argument ausserhalb des Bereichs`, caller stack above helper | Probe signatures now prefer owner-like OMSI frames over generic Delphi helpers; validate with the next runtime session. |
-| Invalid float / float divide by zero | Medium-high | `0x00024F68..0x00024FA9`, `0x00011610..0x00011611`, parser clusters `0x001AB9B8..0x003B90B0` | `Gleitkommawert`, `Gleitkommadivision durch Null`, `EZeroDivide`, parser-cluster KnownRVA labels | Add source-context extraction for nearby logfile text so invalid numeric tokens are easier to identify. |
-| Stream read/write failures | Medium | `0x0004DF1C..0x00054B2E`, `0x0004EB15..0x0004EB34` | `Stream-Lesefehler`, `Stream-Schreibfehler`, preceding/following load messages | Find higher-level callers of the stream helpers and label the common file-loader owners. |
+| Invalid float / float divide by zero | High | `0x00024F68..0x00024FA9`, `0x00011610..0x00011611`, parser clusters `0x001AB9B8..0x003B90B0` | `Gleitkommawert`, `Gleitkommadivision durch Null`, `EZeroDivide`, parser-cluster KnownRVA labels | Analyzer captures a bounded five-line context window so invalid tokens and owning load text remain visible. |
+| Stream read/write failures | Medium-high | `0x0004DF1C..0x00054B2E`, `0x0004EB15..0x0004EB34`; caller fan-out documented in `ghidra-stream-callers-notes.md` | `Stream-Lesefehler`, `Stream-Schreibfehler`, preceding/following load messages and next OMSI stack frame | The central helpers are generic with broad fan-out; keep caller-context priority and map only stable higher owners from future signatures. |
 | Script variable / invalid command names | High | parser `0x001D1E68..0x001D4076`; variable `0x001D378D..0x001D37E3`; macro `0x001D38D1..0x001D3ABC`; constant `0x001D3BAA..0x001D3C27`; function `0x001D3DE1..0x001D3E52` | `Variablenname ungueltig`, command text, source context and vehicle path already in logfile | The four resource keys and their negative symbol-lookup branches are mapped; validate future stacks against the narrow paths. |
 | Map/vehicle update bursts | Medium | `0x002F359C..0x002F3981`, `0x0039C9D0..0x0039EDD0`, `0x003D5374..0x003D8B20`, J2 `0x003D61F8..0x003D6221` | `CV.Calculate`, `map.translate`, `TUV`, VAS largest-free block, caller stacks | Static xrefs now separate the vehicle J2 checkpoint from `TMap.RefreshObjectsKacheln`; validate their runtime ordering in the next session. |
 | PhysObj duplicate collision load | High | load `0x003AE8E0..0x003AEC00`, unload `0x003AE554`, owner pair `0x003AB110..0x003AB3FF` | duplicate collision warning, tile refresh timing, reserved VAS blocks | Load and unload are statically symmetric; investigate runtime load-before-unload ordering and repeated owner identity. |
@@ -30,13 +30,11 @@ even considered.
 
 ## Immediate Static Priorities
 
-1. Find higher-level callers of the stream read/write helpers and label common
-   file-loader owners.
-2. Add source-context extraction for invalid numeric tokens and script parser
-   diagnostics already present in `logfile.txt`.
-3. Use the analyzer's top suspicious signals section after each session to pick
+1. Use the analyzer's top suspicious signals section after each session to pick
    the next narrow static pass instead of repeatedly launching OMSI.
-4. Keep release automation separate from diagnostics. Release tags package the
+2. Map stable higher stream owners only when a runtime signature distinguishes
+   one from the generic VCL/runtime fan-out.
+3. Keep release automation separate from diagnostics. Release tags package the
    probe, but runtime behaviour remains passive and unchanged.
 
 ## Interpretation Rules

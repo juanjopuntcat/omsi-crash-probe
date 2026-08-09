@@ -111,6 +111,8 @@ exhaustion.
 Direct3D texture creation/release, and Delphi VirtualAlloc/VirtualFree paths.
 `ghidra-script-parser-notes.md` maps invalid variable, macro, constant, and
 function-name diagnostics to their exact parser branches.
+`ghidra-stream-callers-notes.md` records the generic stream-helper fan-out and
+the narrower read/write chains that require a higher caller for attribution.
 
 Known RVA labels are context hints only. For example, an exception inside a
 Delphi managed-string helper usually means the useful owner is the caller that

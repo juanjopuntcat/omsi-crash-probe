@@ -11,3 +11,9 @@
 11 12:00:06 -  -   Error: Texture "Synthetic\texture.dds" failed!
 12 12:00:06 -  -   Error: Texturladen - Direct9 Error: E_OUTOFMEMORY
 13 12:00:07 -  -   Error: Direct-3D-Device-Reset schlug fehl, Fehler: D3DERR_INVALIDCALL
+14 12:00:08 -  - Information: Loading synthetic script source
+15 12:00:08 -  -   Error: Fehler: im Befehl "(L.L.synthetic_bad)" (Synthetic\bus.osc) ist der Variablenname ungueltig!
+16 12:00:08 -  - Information: Script compilation stopped
+17 12:00:09 -  - Information: Reading numeric property synthetic_acceleration
+18 12:00:09 -  -   Error: 'not-a-number' ist kein gueltiger Gleitkommawert
+19 12:00:09 -  - Information: Numeric property rejected

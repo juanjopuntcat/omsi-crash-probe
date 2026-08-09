@@ -51,6 +51,9 @@ try {
     Assert-ReportContains $report 'Critical 32-bit VAS exhaustion / fragmentation' 'VAS verdict'
     Assert-ReportContains $report 'Executable-page cache: 900 hits, 100 misses, 90% hit rate' 'stack page-cache statistics'
     Assert-ReportContains $report 'Large Address Aware: True \(0X81AE\)' 'executable LAA status'
+    Assert-ReportContains $report 'Script command.*synthetic_bad' 'invalid script variable context'
+    Assert-ReportContains $report 'Numeric / floating point.*not-a-number' 'invalid numeric token context'
+    Assert-ReportContains $report 'Script compilation stopped' 'following script context line'
 
     Write-Host 'All analyzer fixture tests passed.'
 }

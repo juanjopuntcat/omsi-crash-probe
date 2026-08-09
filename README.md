@@ -87,6 +87,16 @@ The fixtures cover Code 8 ownership buckets and precursors, Direct3D/texture
 errors, old and current VAS snapshot formats, threshold crossings, and KnownRVA
 signature labels. The GitHub build workflow runs the same suite.
 
+## Large Address Aware
+
+`Set-OmsiLargeAddressAware.bat` enables the PE
+`IMAGE_FILE_LARGE_ADDRESS_AWARE` flag through Microsoft's `EDITBIN`. Make and
+verify a backup of `Omsi.exe` before running it. Steam verification or an update
+may replace the executable and remove the flag.
+
+Each new probe session logs `ExecutableFlags`, and the analyzer reports the LAA
+state and PE characteristics so replacement is detected immediately.
+
 The current investigation map lives in `known-error-roadmap.md`. It lists which
 common OMSI error families already have static RVA anchors and which ones still
 need focused Ghidra passes.
@@ -252,6 +262,8 @@ OmsiCrashProbe.dll
   into module data sections are not treated as probable caller frames.
 - Keeps memory/resource snapshots sparse because the virtual-address walk is
   useful but should not run on every repeated first-chance exception.
+- Caches executable-page protection checks during stack scans while preserving
+  the existing executable-memory filter and exact exception signatures.
 - Delphi object/string decoding uses guarded memory reads and simply omits the
   decoded fields when the guessed layout is not valid.
 - Known-RVA classification is static text based on local Ghidra analysis; it

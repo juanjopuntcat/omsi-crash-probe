@@ -38,6 +38,16 @@ static __declspec(thread) bool g_insideHandler = false;
 // not depend on heap allocation while the process may already be unstable.
 static const int kMaxSignatureStats = 128;
 static const int kMaxStackCandidates = 48;
+static const int kExecutablePageCacheSize = 1024;
+
+// Direct-mapped page cache for executable-protection checks performed during
+// stack scans. OMSI can raise hundreds of thousands of handled exceptions, and
+// their return addresses repeatedly touch the same small set of code pages.
+// Values are 0 unknown, 1 non-executable, and 2 executable.
+static volatile LONG g_executablePageKeys[kExecutablePageCacheSize] = {};
+static volatile LONG g_executablePageValues[kExecutablePageCacheSize] = {};
+static volatile LONG g_executablePageCacheHits = 0;
+static volatile LONG g_executablePageCacheMisses = 0;
 
 struct StackCandidate {
     DWORD stackOffset;
@@ -320,6 +330,37 @@ static void BuildLogPath() {
     snprintf(dir, sizeof(dir), "%sOmsiCrashProbe", exePath);
     CreateDirectoryA(dir, nullptr);
     snprintf(g_logPath, sizeof(g_logPath), "%s\\probe.log", dir);
+}
+
+static void LogExecutableFlags() {
+    HMODULE executable = GetModuleHandleA(nullptr);
+    WORD characteristics = 0;
+    bool validPe = false;
+
+    __try {
+        IMAGE_DOS_HEADER* dos = reinterpret_cast<IMAGE_DOS_HEADER*>(executable);
+        if (dos && dos->e_magic == IMAGE_DOS_SIGNATURE) {
+            IMAGE_NT_HEADERS32* nt = reinterpret_cast<IMAGE_NT_HEADERS32*>(
+                reinterpret_cast<BYTE*>(executable) + dos->e_lfanew);
+            if (nt->Signature == IMAGE_NT_SIGNATURE) {
+                characteristics = nt->FileHeader.Characteristics;
+                validPe = true;
+            }
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        validPe = false;
+    }
+
+    char line[256] = {};
+    snprintf(
+        line,
+        sizeof(line),
+        "ExecutableFlags validPe=%d largeAddressAware=%d characteristics=0x%04X",
+        validPe ? 1 : 0,
+        validPe && (characteristics & IMAGE_FILE_LARGE_ADDRESS_AWARE) ? 1 : 0,
+        characteristics);
+    AppendLine(line);
 }
 
 // Convert common Windows/Delphi exception codes into stable names for the log.
@@ -782,20 +823,48 @@ static bool FindModuleForAddress(uintptr_t address, ModuleInfo* out) {
 }
 
 static bool IsExecutableAddress(uintptr_t address) {
+    uintptr_t pageBase = address & ~static_cast<uintptr_t>(0xFFF);
+    int cacheIndex = static_cast<int>((pageBase >> 12) % kExecutablePageCacheSize);
+    LONG cachedKey = g_executablePageKeys[cacheIndex];
+    LONG cachedValue = g_executablePageValues[cacheIndex];
+    if (cachedKey == static_cast<LONG>(pageBase) && cachedValue != 0) {
+        InterlockedIncrement(&g_executablePageCacheHits);
+        return cachedValue == 2;
+    }
+
+    InterlockedIncrement(&g_executablePageCacheMisses);
     MEMORY_BASIC_INFORMATION mbi = {};
     if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
         return false;
     }
 
-    if (mbi.State != MEM_COMMIT || (mbi.Protect & PAGE_GUARD) || (mbi.Protect & PAGE_NOACCESS)) {
-        return false;
-    }
-
     DWORD protection = mbi.Protect & 0xFF;
-    return protection == PAGE_EXECUTE ||
+    bool executable = mbi.State == MEM_COMMIT &&
+        !(mbi.Protect & PAGE_GUARD) &&
+        !(mbi.Protect & PAGE_NOACCESS) &&
+        (protection == PAGE_EXECUTE ||
         protection == PAGE_EXECUTE_READ ||
         protection == PAGE_EXECUTE_READWRITE ||
-        protection == PAGE_EXECUTE_WRITECOPY;
+        protection == PAGE_EXECUTE_WRITECOPY);
+
+    // Clear the key while replacing a direct-mapped entry so a concurrent
+    // reader cannot combine an old key with the new value.
+    InterlockedExchange(&g_executablePageKeys[cacheIndex], 0);
+    InterlockedExchange(&g_executablePageValues[cacheIndex], executable ? 2 : 1);
+    InterlockedExchange(&g_executablePageKeys[cacheIndex], static_cast<LONG>(pageBase));
+    return executable;
+}
+
+static void LogExecutablePageCacheStats() {
+    char line[256] = {};
+    snprintf(
+        line,
+        sizeof(line),
+        "ExecutablePageCache hits=%ld misses=%ld slots=%d",
+        g_executablePageCacheHits,
+        g_executablePageCacheMisses,
+        kExecutablePageCacheSize);
+    AppendLine(line);
 }
 
 static const KnownOmsiRva* DescribeOmsiRva(uintptr_t rva) {
@@ -1407,6 +1476,7 @@ extern "C" void __stdcall PluginStart(void* omsiContext) {
 
     BuildLogPath();
     AppendLine("OmsiCrashProbe PluginStart");
+    LogExecutableFlags();
     LogMemorySnapshot("PluginStart");
 
     // Install with first priority so we can see first-chance exceptions before
@@ -1431,6 +1501,7 @@ extern "C" void __stdcall PluginFinalize() {
     AppendLine("OmsiCrashProbe PluginFinalize");
     LogMemorySnapshot("PluginFinalize");
     LogSignatureSummary();
+    LogExecutablePageCacheStats();
 
     if (g_lockReady) {
         DeleteCriticalSection(&g_logLock);

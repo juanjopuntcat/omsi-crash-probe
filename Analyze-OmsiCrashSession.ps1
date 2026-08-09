@@ -614,6 +614,11 @@ function Analyze-ProbeLog {
         OwnerFrames = New-Counter
         MemorySnapshots = New-Object 'System.Collections.Generic.List[object]'
         VasThresholdEvents = New-Object 'System.Collections.Generic.List[object]'
+        ExecutablePageCacheHits = [UInt64]0
+        ExecutablePageCacheMisses = [UInt64]0
+        ExecutablePageCacheSlots = [UInt64]0
+        ExecutableLargeAddressAware = $null
+        ExecutableCharacteristics = ''
         Started = $false
         Finalized = $false
     }
@@ -706,6 +711,21 @@ function Analyze-ProbeLog {
                 UserObjects = [UInt64]$Matches.user
                 Reason = $Matches.reason
             })
+            continue
+        }
+
+        if ($line -match '^ExecutablePageCache hits=(?<hits>\d+) misses=(?<misses>\d+) slots=(?<slots>\d+)') {
+            $result.ExecutablePageCacheHits = [UInt64]$Matches.hits
+            $result.ExecutablePageCacheMisses = [UInt64]$Matches.misses
+            $result.ExecutablePageCacheSlots = [UInt64]$Matches.slots
+            continue
+        }
+
+        if ($line -match '^ExecutableFlags validPe=(?<valid>[01]) largeAddressAware=(?<laa>[01]) characteristics=(?<characteristics>0x[0-9A-Fa-f]+)') {
+            if ($Matches.valid -eq '1') {
+                $result.ExecutableLargeAddressAware = $Matches.laa -eq '1'
+                $result.ExecutableCharacteristics = $Matches.characteristics.ToUpperInvariant()
+            }
             continue
         }
 
@@ -1198,6 +1218,14 @@ else {
     $lines.Add("- Exception events with full records: $($probeSummary.ExceptionEvents.Count)")
     $lines.Add("- Final signature rows: $($probeSummary.SignatureRows.Count)")
     $lines.Add("- Memory snapshots: $($probeSummary.MemorySnapshots.Count)")
+    if ($null -ne $probeSummary.ExecutableLargeAddressAware) {
+        $lines.Add("- Large Address Aware: $($probeSummary.ExecutableLargeAddressAware) ($($probeSummary.ExecutableCharacteristics))")
+    }
+    if ($probeSummary.ExecutablePageCacheHits -gt 0 -or $probeSummary.ExecutablePageCacheMisses -gt 0) {
+        $cacheTotal = $probeSummary.ExecutablePageCacheHits + $probeSummary.ExecutablePageCacheMisses
+        $cacheHitRate = if ($cacheTotal -gt 0) { [math]::Round(100 * $probeSummary.ExecutablePageCacheHits / $cacheTotal, 1) } else { 0 }
+        $lines.Add("- Executable-page cache: $($probeSummary.ExecutablePageCacheHits) hits, $($probeSummary.ExecutablePageCacheMisses) misses, $cacheHitRate% hit rate")
+    }
     $lines.Add('')
 
     $lines.Add('### Probe families')

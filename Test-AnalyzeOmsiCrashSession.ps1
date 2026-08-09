@@ -49,6 +49,8 @@ try {
     Assert-ReportContains $report 'VAS threshold crossings' 'threshold section'
     Assert-ReportContains $report 'CV.Calculate J2 checkpoint' 'KnownRVA signature label'
     Assert-ReportContains $report 'Critical 32-bit VAS exhaustion / fragmentation' 'VAS verdict'
+    Assert-ReportContains $report 'Executable-page cache: 900 hits, 100 misses, 90% hit rate' 'stack page-cache statistics'
+    Assert-ReportContains $report 'Large Address Aware: True \(0X81AE\)' 'executable LAA status'
 
     Write-Host 'All analyzer fixture tests passed.'
 }

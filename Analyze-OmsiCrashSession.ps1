@@ -156,6 +156,78 @@ function Find-KnownRva {
     return $null
 }
 
+function Format-Rva {
+    param([UInt64]$Rva)
+
+    if ($Rva -eq 0) {
+        return ''
+    }
+
+    return '0x{0:X8}' -f $Rva
+}
+
+function Test-GenericRuntimeKnownText {
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $false
+    }
+
+    return $Text -match '(?i)Delphi|helper|exception class|exception raiser|constructor|raise site'
+}
+
+function Get-ProbableOwnerFrame {
+    param(
+        [UInt64]$Omsi1,
+        [object]$Known1,
+        [UInt64]$Omsi2,
+        [object]$Known2
+    )
+
+    $ownerRva = $Omsi1
+    $ownerKnown = if ($Known1) { $Known1.System } else { '' }
+    $helperRva = 0
+    $helperKnown = ''
+    $reason = 'first OMSI stack candidate'
+    $known1IsGeneric = $Known1 -and (Test-GenericRuntimeKnownText $Known1.System)
+    $known2IsGeneric = $Known2 -and (Test-GenericRuntimeKnownText $Known2.System)
+
+    if ($known1IsGeneric) {
+        $helperRva = $Omsi1
+        $helperKnown = $Known1.System
+
+        if ($Omsi2 -ne 0 -and -not $known2IsGeneric) {
+            $ownerRva = $Omsi2
+            $ownerKnown = if ($Known2) { $Known2.System } else { '' }
+            $reason = 'first frame is helper; using next OMSI stack candidate'
+        }
+        elseif ($Omsi2 -ne 0) {
+            $ownerRva = $Omsi2
+            $ownerKnown = 'unresolved helper chain'
+            $reason = 'first two OMSI stack candidates are generic helpers'
+        }
+        else {
+            $reason = 'helper frame with no next OMSI stack candidate'
+        }
+    }
+    elseif ($Known1) {
+        $reason = 'first frame has useful KnownRva label'
+    }
+    elseif ($Omsi1 -eq 0 -and $Omsi2 -ne 0) {
+        $ownerRva = $Omsi2
+        $ownerKnown = if ($Known2) { $Known2.System } else { '' }
+        $reason = 'second OMSI stack candidate only'
+    }
+
+    [pscustomobject]@{
+        OwnerRva = Format-Rva $ownerRva
+        OwnerKnown = $ownerKnown
+        HelperRva = Format-Rva $helperRva
+        HelperKnown = $helperKnown
+        Reason = $reason
+    }
+}
+
 function Get-Family {
     param(
         [string]$Text,
@@ -438,6 +510,7 @@ function Analyze-ProbeLog {
         KnownRvaHits = New-Counter
         Families = New-Counter
         Modules = New-Counter
+        OwnerFrames = New-Counter
         MemorySnapshots = New-Object 'System.Collections.Generic.List[object]'
         Started = $false
         Finalized = $false
@@ -541,6 +614,11 @@ function Analyze-ProbeLog {
             }
             $knownText = ($knownValues | Where-Object { $_ }) -join ' / '
             $family = Get-Family ($Matches.codeName + ' ' + $knownText) ('0x' + $Matches.code)
+            $owner = Get-ProbableOwnerFrame $omsi1 $known1 $omsi2 $known2
+            $ownerKey = $owner.OwnerRva
+            if ($owner.OwnerKnown) {
+                $ownerKey += ' ' + $owner.OwnerKnown
+            }
 
             $pendingSignature = [pscustomobject]@{
                 Count = [int]$Matches.count
@@ -550,11 +628,17 @@ function Analyze-ProbeLog {
                 Omsi2 = '0x' + ($Matches.omsi2).ToUpperInvariant()
                 Known = $knownText
                 Family = $family
+                OwnerRva = $owner.OwnerRva
+                OwnerKnown = $owner.OwnerKnown
+                HelperRva = $owner.HelperRva
+                HelperKnown = $owner.HelperKnown
+                OwnerReason = $owner.Reason
                 First = $Matches.first
                 Last = $Matches.last
             }
             $result.SignatureRows.Add($pendingSignature)
             Add-Count $result.Families $family $pendingSignature.Count
+            Add-Count $result.OwnerFrames $ownerKey $pendingSignature.Count
             continue
         }
 
@@ -787,6 +871,10 @@ else {
     $lines.Add('')
     Add-MarkdownTable $lines @('Family', 'Count') (New-CountRows $probeSummary.Families 'Family' $Top)
 
+    $lines.Add('### Probable owner frames')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('OwnerFrame', 'Count') (New-CountRows $probeSummary.OwnerFrames 'OwnerFrame' $Top)
+
     $lines.Add('### Final exception signatures')
     $lines.Add('')
     $signatureRows = @($probeSummary.SignatureRows | Sort-Object Count -Descending | Select-Object -First $Top | ForEach-Object {
@@ -794,6 +882,10 @@ else {
             Count = $_.Count
             Code = $_.Code
             Family = $_.Family
+            OwnerRva = $_.OwnerRva
+            OwnerKnown = $_.OwnerKnown
+            HelperRva = $_.HelperRva
+            HelperKnown = $_.HelperKnown
             Known = $_.Known
             Omsi1 = $_.Omsi1
             Omsi2 = $_.Omsi2
@@ -801,7 +893,7 @@ else {
             Last = $_.Last
         }
     })
-    Add-MarkdownTable $lines @('Count', 'Code', 'Family', 'Known', 'Omsi1', 'Omsi2', 'First', 'Last') $signatureRows
+    Add-MarkdownTable $lines @('Count', 'Code', 'Family', 'OwnerRva', 'OwnerKnown', 'HelperRva', 'HelperKnown', 'Known', 'Omsi1', 'Omsi2', 'First', 'Last') $signatureRows
 
     $lines.Add('### Full exception events')
     $lines.Add('')

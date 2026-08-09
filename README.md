@@ -42,6 +42,8 @@ For relevant exceptions it records:
 - module path
 - known OMSI RVA labels for Ghidra-inspected engine/runtime hotspots
 - stack values that look like return addresses, resolved to `module+RVA`
+- repeated exception signatures grouped by owner-like OMSI frames when possible,
+  skipping generic Delphi helper frames when deeper OMSI stack candidates exist
 - sparse memory/resource snapshots at plugin start, plugin shutdown, and selected
   full exception captures
 - repeated exception signatures are rate-limited after the first few full

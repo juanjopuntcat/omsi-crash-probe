@@ -49,7 +49,8 @@ struct StackCandidate {
 // A stable-ish identity for repeated first-chance exceptions. Delphi exception
 // parameter p1 is often an object/string pointer and changes frequently, so this
 // signature focuses on code-site style values: exception code, raise-site RVA,
-// Delphi p0/p2, and the first two Omsi.exe stack candidates.
+// Delphi p0/p2, and the first two owner-like Omsi.exe stack candidates. Generic
+// Delphi helper frames are skipped when deeper OMSI frames are available.
 struct ExceptionSignature {
     DWORD code;
     uintptr_t exceptionRva;
@@ -664,6 +665,50 @@ static const char* KnownOmsiRvaSystem(uintptr_t rva) {
     return known ? known->system : "";
 }
 
+static bool AsciiEqualsIgnoreCase(char a, char b) {
+    if (a >= 'A' && a <= 'Z') {
+        a = static_cast<char>(a - 'A' + 'a');
+    }
+    if (b >= 'A' && b <= 'Z') {
+        b = static_cast<char>(b - 'A' + 'a');
+    }
+    return a == b;
+}
+
+static bool ContainsIgnoreCase(const char* text, const char* needle) {
+    if (!text || !needle || !needle[0]) {
+        return false;
+    }
+
+    for (const char* p = text; *p; ++p) {
+        const char* a = p;
+        const char* b = needle;
+        while (*a && *b && AsciiEqualsIgnoreCase(*a, *b)) {
+            ++a;
+            ++b;
+        }
+        if (!*b) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool IsGenericRuntimeKnownRva(uintptr_t rva) {
+    const KnownOmsiRva* known = DescribeOmsiRva(rva);
+    if (!known) {
+        return false;
+    }
+
+    const char* system = known->system;
+    return ContainsIgnoreCase(system, "Delphi") ||
+        ContainsIgnoreCase(system, "helper") ||
+        ContainsIgnoreCase(system, "exception class") ||
+        ContainsIgnoreCase(system, "exception raiser") ||
+        ContainsIgnoreCase(system, "constructor") ||
+        ContainsIgnoreCase(system, "raise site");
+}
+
 static void LogKnownOmsiRva(const char* source, uintptr_t rva, DWORD stackOffset) {
     const KnownOmsiRva* known = DescribeOmsiRva(rva);
     if (!known) {
@@ -925,6 +970,24 @@ static void BuildSignature(
     signature->exceptionRva = exceptionRva;
     signature->param0 = er->NumberParameters > 0 ? er->ExceptionInformation[0] : 0;
     signature->param2 = er->NumberParameters > 2 ? er->ExceptionInformation[2] : 0;
+
+    for (int i = 0; i < candidateCount; ++i) {
+        if (lstrcmpiA(candidates[i].module, "Omsi.exe") != 0 || IsGenericRuntimeKnownRva(candidates[i].rva)) {
+            continue;
+        }
+
+        if (!signature->firstOmsiRva) {
+            signature->firstOmsiRva = candidates[i].rva;
+        }
+        else if (candidates[i].rva != signature->firstOmsiRva) {
+            signature->secondOmsiRva = candidates[i].rva;
+            break;
+        }
+    }
+
+    if (signature->firstOmsiRva) {
+        return;
+    }
 
     for (int i = 0; i < candidateCount; ++i) {
         if (lstrcmpiA(candidates[i].module, "Omsi.exe") == 0) {

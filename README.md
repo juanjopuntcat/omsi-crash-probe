@@ -346,6 +346,11 @@ The compact native workspace uses a restrained high-contrast header, grouped
 installation status, alternating table rows, contextual fix-state colors, and
 a stable responsive layout with a minimum usable window size.
 
+The bug table supports ascending and descending sorting from every column
+header. Its filter can show all bugs, only bugs with an approved manifest fix,
+or only bugs without one. Filtering is based on manifest ownership, so applied
+and currently incompatible fixes still remain in the approved-fix view.
+
 The shared native core provides tested audit, apply, backup, atomic replace,
 and rollback primitives. The GUI obtains every offset and byte sequence from
 the validated manifest; it never duplicates patch data in UI code.

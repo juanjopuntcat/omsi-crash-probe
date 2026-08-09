@@ -19,6 +19,7 @@
 #include <array>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "comdlg32.lib")
@@ -33,7 +34,8 @@ enum ControlId {
     IdBrowse,
     IdInspect,
     IdBugList,
-    IdApply
+    IdApply,
+    IdFilter
 };
 
 enum DialogButtonId {
@@ -89,6 +91,7 @@ HWND g_title = nullptr;
 HWND g_subtitle = nullptr;
 HWND g_pathLabel = nullptr;
 HWND g_bugsLabel = nullptr;
+HWND g_filter = nullptr;
 HFONT g_uiFont = nullptr;
 HFONT g_titleFont = nullptr;
 HFONT g_sectionFont = nullptr;
@@ -101,6 +104,8 @@ std::array<int, kBugs.size()> g_bugPatchIndex = {};
 std::array<FixState, kBugs.size()> g_fixStates = {};
 std::wstring g_omsiRoot;
 bool g_manifestLoaded = false;
+int g_sortColumn = 0;
+bool g_sortAscending = true;
 
 constexpr COLORREF kBackground = RGB(244, 246, 247);
 constexpr COLORREF kHeader = RGB(34, 39, 41);
@@ -194,12 +199,17 @@ LRESULT DrawBugList(NMLVCUSTOMDRAW* draw) {
             return CDRF_NOTIFYSUBITEMDRAW;
         case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
             const size_t row = static_cast<size_t>(draw->nmcd.dwItemSpec);
+            LVITEMW item = {};
+            item.mask = LVIF_PARAM;
+            item.iItem = static_cast<int>(row);
+            ListView_GetItem(g_list, &item);
+            const size_t bugIndex = static_cast<size_t>(item.lParam);
             draw->clrText = kText;
             draw->clrTextBk = row % 2 == 0 ? RGB(255, 255, 255) : RGB(248, 250, 250);
-            if (draw->iSubItem == 2 && row < g_fixStates.size()) {
-                if (g_fixStates[row] == FixState::Available) draw->clrText = RGB(0, 112, 83);
-                if (g_fixStates[row] == FixState::Applied) draw->clrText = RGB(30, 92, 165);
-                if (g_fixStates[row] == FixState::Incompatible) draw->clrText = RGB(170, 68, 45);
+            if (draw->iSubItem == 2 && bugIndex < g_fixStates.size()) {
+                if (g_fixStates[bugIndex] == FixState::Available) draw->clrText = RGB(0, 112, 83);
+                if (g_fixStates[bugIndex] == FixState::Applied) draw->clrText = RGB(30, 92, 165);
+                if (g_fixStates[bugIndex] == FixState::Incompatible) draw->clrText = RGB(170, 68, 45);
             }
             return CDRF_NEWFONT;
         }
@@ -207,26 +217,92 @@ LRESULT DrawBugList(NMLVCUSTOMDRAW* draw) {
     return CDRF_DODEFAULT;
 }
 
+const wchar_t* FixStatus(size_t bugIndex) {
+    if (g_fixStates[bugIndex] == FixState::Available) return L"Available";
+    if (g_fixStates[bugIndex] == FixState::Applied) return L"Applied";
+    if (g_fixStates[bugIndex] == FixState::Incompatible) return L"Incompatible";
+    if (g_bugPatchIndex[bugIndex] >= 0) return L"Fix documented";
+    return kBugs[bugIndex].status;
+}
+
+bool BugIndexFromRow(int row, size_t* bugIndex) {
+    if (row < 0 || bugIndex == nullptr) return false;
+    LVITEMW item = {};
+    item.mask = LVIF_PARAM;
+    item.iItem = row;
+    if (!ListView_GetItem(g_list, &item)) return false;
+    const size_t index = static_cast<size_t>(item.lParam);
+    if (index >= kBugs.size()) return false;
+    *bugIndex = index;
+    return true;
+}
+
+int CompareBugs(size_t left, size_t right) {
+    const BugEntry& a = kBugs[left];
+    const BugEntry& b = kBugs[right];
+    if (g_sortColumn == 4) {
+        if (a.rva < b.rva) return -1;
+        if (a.rva > b.rva) return 1;
+        return 0;
+    }
+    const wchar_t* leftText = a.title;
+    const wchar_t* rightText = b.title;
+    if (g_sortColumn == 1) { leftText = a.category; rightText = b.category; }
+    if (g_sortColumn == 2) { leftText = FixStatus(left); rightText = FixStatus(right); }
+    if (g_sortColumn == 3) { leftText = a.confidence; rightText = b.confidence; }
+    if (g_sortColumn == 5) { leftText = a.description; rightText = b.description; }
+    return _wcsicmp(leftText, rightText);
+}
+
+void UpdateSortIndicator() {
+    HWND header = ListView_GetHeader(g_list);
+    const int count = Header_GetItemCount(header);
+    for (int column = 0; column < count; ++column) {
+        HDITEMW item = {};
+        item.mask = HDI_FORMAT;
+        Header_GetItem(header, column, &item);
+        item.fmt &= ~(HDF_SORTUP | HDF_SORTDOWN);
+        if (column == g_sortColumn) item.fmt |= g_sortAscending ? HDF_SORTUP : HDF_SORTDOWN;
+        Header_SetItem(header, column, &item);
+    }
+}
+
+void UpdateActionButton();
+
 void PopulateBugs() {
-    ListView_DeleteAllItems(g_list);
+    size_t selectedBug = kBugs.size();
+    BugIndexFromRow(ListView_GetNextItem(g_list, -1, LVNI_SELECTED), &selectedBug);
+    const int filter = g_filter == nullptr ? 0 : static_cast<int>(SendMessageW(g_filter, CB_GETCURSEL, 0, 0));
+    std::vector<size_t> visible;
     for (size_t index = 0; index < kBugs.size(); ++index) {
+        const bool hasFix = g_bugPatchIndex[index] >= 0;
+        if ((filter == 1 && !hasFix) || (filter == 2 && hasFix)) continue;
+        visible.push_back(index);
+    }
+    std::stable_sort(visible.begin(), visible.end(), [](size_t left, size_t right) {
+        const int comparison = CompareBugs(left, right);
+        return g_sortAscending ? comparison < 0 : comparison > 0;
+    });
+    ListView_DeleteAllItems(g_list);
+    for (size_t rowIndex = 0; rowIndex < visible.size(); ++rowIndex) {
+        const size_t index = visible[rowIndex];
         const BugEntry& bug = kBugs[index];
         LVITEMW item = {};
         item.mask = LVIF_TEXT | LVIF_PARAM;
-        item.iItem = static_cast<int>(index);
+        item.iItem = static_cast<int>(rowIndex);
         item.pszText = const_cast<wchar_t*>(bug.title);
         item.lParam = static_cast<LPARAM>(index);
         const int row = ListView_InsertItem(g_list, &item);
         ListView_SetItemText(g_list, row, 1, const_cast<wchar_t*>(bug.category));
-        ListView_SetItemText(g_list, row, 2, const_cast<wchar_t*>(bug.status));
+        ListView_SetItemText(g_list, row, 2, const_cast<wchar_t*>(FixStatus(index)));
         ListView_SetItemText(g_list, row, 3, const_cast<wchar_t*>(bug.confidence));
         ListView_SetItemText(g_list, row, 4, const_cast<wchar_t*>(bug.anchor));
         ListView_SetItemText(g_list, row, 5, const_cast<wchar_t*>(bug.description));
+        if (index == selectedBug) ListView_SetItemState(g_list, row, LVIS_SELECTED | LVIS_FOCUSED,
+            LVIS_SELECTED | LVIS_FOCUSED);
     }
-}
-
-void SetBugStatus(size_t row, const wchar_t* status) {
-    ListView_SetItemText(g_list, static_cast<int>(row), 2, const_cast<wchar_t*>(status));
+    UpdateSortIndicator();
+    UpdateActionButton();
 }
 
 std::wstring SelectedPath() {
@@ -273,7 +349,6 @@ void ClassifyFixes() {
         g_fixStates[row] = FixState::None;
         const int patchIndex = g_bugPatchIndex[row];
         if (patchIndex < 0 || g_omsiRoot.empty()) {
-            SetBugStatus(row, kBugs[row].status);
             continue;
         }
         const auto& patch = g_manifest.patches[static_cast<size_t>(patchIndex)];
@@ -285,7 +360,6 @@ void ClassifyFixes() {
             omsi_patch::PreparePatchRequest(patch, targetImage.identity, &request, &error) &&
             omsi_patch::AuditPatch(target, request, &error)) {
             g_fixStates[row] = FixState::Available;
-            SetBugStatus(row, L"Available");
             ++available;
             continue;
         }
@@ -297,18 +371,16 @@ void ClassifyFixes() {
             omsi_patch::LoadPeImage(target, &targetImage, &error) &&
             omsi_patch::BytesMatch(targetImage, request.fileOffset, request.replacementBytes)) {
             g_fixStates[row] = FixState::Applied;
-            SetBugStatus(row, L"Applied");
             ++applied;
             continue;
         }
         g_fixStates[row] = FixState::Incompatible;
-        SetBugStatus(row, L"Incompatible");
     }
     wchar_t summary[200] = {};
     swprintf_s(summary, L"%zu approved fixes in manifest  |  %zu available  |  %zu applied",
         g_manifest.patches.size(), available, applied);
     SetWindowTextW(g_fixSummary, summary);
-    UpdateActionButton();
+    PopulateBugs();
 }
 
 std::wstring FindOmsiExecutable() {
@@ -350,7 +422,6 @@ void LoadManifestStatus() {
         for (size_t row = 0; row < kBugs.size(); ++row) {
             if (g_manifest.patches[patchIndex].rva == kBugs[row].rva) {
                 g_bugPatchIndex[row] = static_cast<int>(patchIndex);
-                SetBugStatus(row, L"Fix documented");
                 break;
             }
         }
@@ -358,6 +429,7 @@ void LoadManifestStatus() {
     wchar_t summary[160] = {};
     swprintf_s(summary, L"%zu approved fixes in manifest", g_manifest.patches.size());
     SetWindowTextW(g_fixSummary, summary);
+    PopulateBugs();
     EnableWindow(g_apply, FALSE);
 }
 
@@ -390,10 +462,10 @@ void InspectSelectedFile(HWND window) {
     InvalidateRect(window, nullptr, TRUE);
 }
 
-bool PerformSelectedAction(HWND window, int row) {
-    if (row < 0 || static_cast<size_t>(row) >= kBugs.size()) return false;
-    const int patchIndex = g_bugPatchIndex[static_cast<size_t>(row)];
-    const FixState state = g_fixStates[static_cast<size_t>(row)];
+bool PerformSelectedAction(HWND window, size_t bugIndex) {
+    if (bugIndex >= kBugs.size()) return false;
+    const int patchIndex = g_bugPatchIndex[bugIndex];
+    const FixState state = g_fixStates[bugIndex];
     if (patchIndex < 0 || (state != FixState::Available && state != FixState::Applied)) return false;
     if (IsOmsiRunning()) {
         MessageBoxW(window, L"Close OMSI 2 before changing any game file.", L"OMSI is running", MB_OK | MB_ICONWARNING);
@@ -436,10 +508,11 @@ HRESULT CALLBACK BugDialogCallback(HWND dialog, UINT notification, WPARAM, LPARA
 
 void ShowSelectedBugDialog(HWND window) {
     const int row = ListView_GetNextItem(g_list, -1, LVNI_SELECTED);
-    if (row < 0 || static_cast<size_t>(row) >= kBugs.size()) return;
-    const BugEntry& bug = kBugs[static_cast<size_t>(row)];
-    const FixState state = g_fixStates[static_cast<size_t>(row)];
-    const int patchIndex = g_bugPatchIndex[static_cast<size_t>(row)];
+    size_t bugIndex = 0;
+    if (!BugIndexFromRow(row, &bugIndex)) return;
+    const BugEntry& bug = kBugs[bugIndex];
+    const FixState state = g_fixStates[bugIndex];
+    const int patchIndex = g_bugPatchIndex[bugIndex];
 
     std::wstring instruction = bug.title;
     std::wstring content = L"Bug description\n" + std::wstring(bug.description) +
@@ -493,7 +566,7 @@ void ShowSelectedBugDialog(HWND window) {
     int pressed = IDCLOSE;
     if (SUCCEEDED(TaskDialogIndirect(&dialog, &pressed, nullptr, nullptr)) &&
         (pressed == IdDialogApply || pressed == IdDialogRollback)) {
-        PerformSelectedAction(window, row);
+        PerformSelectedAction(window, bugIndex);
     }
 }
 
@@ -526,6 +599,7 @@ void Layout(HWND window) {
     MoveWindow(g_identity, 40, 169, width - 80, 24, TRUE);
     MoveWindow(g_compatibility, 40, 197, width - 80, 24, TRUE);
     MoveWindow(g_bugsLabel, 28, 242, 300, 28, TRUE);
+    MoveWindow(g_filter, width - 266, 238, 238, 220, TRUE);
     MoveWindow(g_list, 28, 276, width - 56, (std::max)(160, height - 358), TRUE);
     MoveWindow(g_fixSummary, 34, height - 61, width - 250, 30, TRUE);
     MoveWindow(g_apply, width - 210, height - 68, 182, 40, TRUE);
@@ -556,6 +630,12 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             g_compatibility = AddControl(window, L"STATIC", L"Compatibility: unknown", SS_LEFT);
             g_bugsLabel = AddControl(window, L"STATIC", L"Documented bugs", SS_LEFT);
             SetFont(g_bugsLabel, g_sectionFont);
+            g_filter = AddControl(window, WC_COMBOBOXW, L"",
+                WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, IdFilter);
+            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"All bugs"));
+            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"With approved fix"));
+            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Without approved fix"));
+            SendMessageW(g_filter, CB_SETCURSEL, 0, 0);
             g_list = CreateWindowExW(0, WC_LISTVIEWW, L"",
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
                 0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdBugList), GetModuleHandleW(nullptr), nullptr);
@@ -649,11 +729,18 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             if (LOWORD(wParam) == IdBrowse) BrowseForOmsi(window);
             if (LOWORD(wParam) == IdInspect) InspectSelectedFile(window);
             if (LOWORD(wParam) == IdApply) ShowSelectedBugDialog(window);
+            if (LOWORD(wParam) == IdFilter && HIWORD(wParam) == CBN_SELCHANGE) PopulateBugs();
             return 0;
         case WM_NOTIFY:
             if (reinterpret_cast<NMHDR*>(lParam)->hwndFrom == g_list) {
                 if (reinterpret_cast<NMHDR*>(lParam)->code == LVN_ITEMCHANGED) UpdateActionButton();
                 if (reinterpret_cast<NMHDR*>(lParam)->code == LVN_ITEMACTIVATE) ShowSelectedBugDialog(window);
+                if (reinterpret_cast<NMHDR*>(lParam)->code == LVN_COLUMNCLICK) {
+                    const int column = reinterpret_cast<NMLISTVIEW*>(lParam)->iSubItem;
+                    if (g_sortColumn == column) g_sortAscending = !g_sortAscending;
+                    else { g_sortColumn = column; g_sortAscending = true; }
+                    PopulateBugs();
+                }
                 if (reinterpret_cast<NMHDR*>(lParam)->code == NM_CUSTOMDRAW)
                     return DrawBugList(reinterpret_cast<NMLVCUSTOMDRAW*>(lParam));
             }

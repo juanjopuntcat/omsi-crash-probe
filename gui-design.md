@@ -62,6 +62,11 @@ Patch ID, target, and backup path are shown in expandable technical details.
 Both lifecycle commands remain visible in the dialog; unsupported actions are
 disabled by the dialog callback rather than omitted or accepted optimistically.
 
+The bug table supports stable ascending/descending sorting on every column and
+three manifest-aware filters: all bugs, bugs with an approved fix, and bugs
+without an approved fix. Rows retain their immutable bug index through sorting
+and filtering so review and patch actions cannot target a visual row number.
+
 ## Delivery stages
 
 1. Extract PE identity and patch operations into a reusable C++ core with JSON

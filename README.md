@@ -108,6 +108,16 @@ The output DLL should be:
 build-x86\Release\OmsiCrashProbe.dll
 ```
 
+GitHub Actions also builds the Win32 Release DLL on every push and pull request.
+The workflow artifact is a zip containing:
+
+```text
+OmsiCrashProbe.dll
+OmsiCrashProbe.opl
+```
+
+That artifact is suitable for attaching to a GitHub Release.
+
 ## Install
 
 Copy these two files into:

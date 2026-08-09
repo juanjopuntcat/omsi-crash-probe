@@ -61,6 +61,10 @@ conversions, Systemfehler Code 8, bitmap/image failures, and access violations
 in OMSI or DirectX/audio modules. These labels are triage hints that should be
 cross-checked against RVAs, stack candidates, and memory snapshots.
 
+The current investigation map lives in `known-error-roadmap.md`. It lists which
+common OMSI error families already have static RVA anchors and which ones still
+need focused Ghidra passes.
+
 Known RVA labels are context hints only. For example, an exception inside a
 Delphi managed-string helper usually means the useful owner is the caller that
 passed the bad string, not the helper itself.

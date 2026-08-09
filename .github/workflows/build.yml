@@ -51,13 +51,23 @@ jobs:
             throw 'Native inspection CLI returned an invalid identity'
           }
 
+      - name: Verify native GUI resources
+        shell: powershell
+        run: |
+          $version = (Get-Item .\build-x86\Release\OmsiCrashProbe.exe).VersionInfo
+          if ($version.ProductName -ne 'OMSI Crash Probe' -or $version.FileVersion -ne '0.1.0.0' -or $version.CompanyName -ne 'Juanjo Rubio') {
+            throw 'Native GUI version resources are missing or incorrect'
+          }
+
       - name: Package OMSI plugin files
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item -LiteralPath build-x86/Release/OmsiCrashProbe.dll -Destination dist/OmsiCrashProbe.dll
           Copy-Item -LiteralPath OmsiCrashProbe.opl -Destination dist/OmsiCrashProbe.opl
-          Compress-Archive -LiteralPath dist/OmsiCrashProbe.dll,dist/OmsiCrashProbe.opl -DestinationPath OmsiCrashProbe-win32.zip -Force
+          Copy-Item -LiteralPath build-x86/Release/OmsiCrashProbe.exe -Destination dist/OmsiCrashProbe.exe
+          Copy-Item -LiteralPath build-x86/Release/OmsiPatchTool.exe -Destination dist/OmsiPatchTool.exe
+          Compress-Archive -LiteralPath dist/OmsiCrashProbe.dll,dist/OmsiCrashProbe.opl,dist/OmsiCrashProbe.exe,dist/OmsiPatchTool.exe -DestinationPath OmsiCrashProbe-win32.zip -Force
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4

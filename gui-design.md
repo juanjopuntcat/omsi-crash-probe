@@ -39,6 +39,14 @@ with the repository's existing MSVC toolchain. This avoids requiring users to
 install PowerShell modules, .NET desktop runtimes, or a browser framework. The
 PowerShell transport remains useful for development, CI, and recovery.
 
+## Implemented read-only shell
+
+Version `0.1.0.0` implements the native Win32 shell, executable selector, PE
+identity and LAA inspection, known-profile recognition, and a dense list of 17
+documented bug families. No fix is selectable yet because the approved patch
+manifest is empty. Windows version metadata and the DPI/Common Controls
+manifest are embedded resources in `OmsiCrashProbe.exe`.
+
 ## Delivery stages
 
 1. Extract PE identity and patch operations into a reusable C++ core with JSON

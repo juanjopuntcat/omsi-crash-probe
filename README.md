@@ -323,6 +323,22 @@ commands are read-only and emit JSON:
 Build it with `build-patch-tool.bat`. The executable uses the static MSVC
 runtime so OMSI's adjacent legacy runtime DLLs cannot satisfy its dependencies.
 
+## Native GUI
+
+`OmsiCrashProbe.exe` is the native Win32 front end. Build it with
+`build-gui.bat`. Version `0.1.0.0` provides:
+
+- selection and inspection of `Omsi.exe`;
+- SHA-256 profile compatibility and Large Address Aware status;
+- a compiled-in catalog of the documented bug families and current candidates;
+- visible fix state, confidence, RVA, and the static finding; and
+- a deliberately disabled Apply action while no approved fix exists.
+
+The executable embeds its DPI/Common Controls manifest and Windows version
+resource, including product name, description, author, copyright, file/product
+version, original filename, and MIT license note. It is a native x86 Windows
+application linked to the static MSVC runtime.
+
 Use this alongside Windows Error Reporting dumps for fatal crashes. The probe is
 especially useful for Delphi/logged exceptions that do not terminate the process.
 

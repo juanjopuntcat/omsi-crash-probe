@@ -73,6 +73,20 @@ function Convert-HexToUInt64 {
     return [Convert]::ToUInt64($clean, 16)
 }
 
+function Convert-TimeOfDayToSeconds {
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $null
+    }
+
+    if ($Text -notmatch '(?<hour>\d\d):(?<minute>\d\d):(?<second>\d\d)') {
+        return $null
+    }
+
+    return ([int]$Matches.hour * 3600) + ([int]$Matches.minute * 60) + [int]$Matches.second
+}
+
 function Add-MarkdownTable {
     param(
         [System.Collections.Generic.List[string]]$Lines,
@@ -469,8 +483,11 @@ function Analyze-ProbeLog {
             Add-Count $result.Modules $Matches.name
         }
 
-        if ($line -match '^MemorySnapshot reason="(?<reason>[^"]+)" privateKB=(?<private>\d+) workingSetKB=(?<working>\d+) peakWorkingSetKB=(?<peak>\d+) pagefileKB=(?<pagefile>\d+) commitAvailMB=(?<commit>\d+) physAvailMB=(?<phys>\d+) vasFreeMB=(?<vasfree>\d+) vasLargestFreeMB=(?<largest>\d+) gdiObjects=(?<gdi>\d+) userObjects=(?<user>\d+)') {
+        if ($line -match '^MemorySnapshot(?: time="(?<time>[^"]+)")? reason="(?<reason>[^"]+)" privateKB=(?<private>\d+) workingSetKB=(?<working>\d+) peakWorkingSetKB=(?<peak>\d+) pagefileKB=(?<pagefile>\d+) commitAvailMB=(?<commit>\d+) physAvailMB=(?<phys>\d+) vasFreeMB=(?<vasfree>\d+) vasLargestFreeMB=(?<largest>\d+) gdiObjects=(?<gdi>\d+) userObjects=(?<user>\d+)') {
+            $snapshotTime = if ($Matches.ContainsKey('time')) { $Matches.time } else { '' }
             $snapshot = [pscustomobject]@{
+                Time = $snapshotTime
+                TimeSeconds = Convert-TimeOfDayToSeconds $snapshotTime
                 Reason = $Matches.reason
                 PrivateKB = [UInt64]$Matches.private
                 WorkingSetKB = [UInt64]$Matches.working
@@ -601,6 +618,50 @@ function New-KnownErrorRows {
     })
 }
 
+function New-NearestMemoryRows {
+    param(
+        [object[]]$Snapshots,
+        [string]$Signal,
+        [string]$TimeText
+    )
+
+    $targetSeconds = Convert-TimeOfDayToSeconds $TimeText
+    if ($null -eq $targetSeconds) {
+        return @()
+    }
+
+    $timedSnapshots = @($Snapshots | Where-Object { $null -ne $_.TimeSeconds })
+    if ($timedSnapshots.Count -eq 0) {
+        return @()
+    }
+
+    $before = @($timedSnapshots |
+        Where-Object { $_.TimeSeconds -le $targetSeconds } |
+        Sort-Object @{ Expression = { $targetSeconds - $_.TimeSeconds }; Descending = $false } |
+        Select-Object -First 1)
+
+    $after = @($timedSnapshots |
+        Where-Object { $_.TimeSeconds -ge $targetSeconds } |
+        Sort-Object @{ Expression = { $_.TimeSeconds - $targetSeconds }; Descending = $false } |
+        Select-Object -First 1)
+
+    @($before + $after | ForEach-Object {
+        $side = if ($_.TimeSeconds -le $targetSeconds) { 'before' } else { 'after' }
+        [pscustomobject]@{
+            Signal = $Signal
+            SignalTime = $TimeText
+            Snapshot = $side
+            SnapshotTime = $_.Time
+            DeltaSeconds = [math]::Abs($_.TimeSeconds - $targetSeconds)
+            Reason = $_.Reason
+            PrivateMB = [math]::Round($_.PrivateKB / 1024, 1)
+            LargestFreeVasMB = $_.VasLargestFreeMB
+            GdiObjects = $_.GdiObjects
+            UserObjects = $_.UserObjects
+        }
+    })
+}
+
 function New-MemorySummaryRows {
     param([object[]]$Snapshots)
 
@@ -616,12 +677,12 @@ function New-MemorySummaryRows {
     $userMax = ($Snapshots | Sort-Object UserObjects -Descending | Select-Object -First 1)
 
     @(
-        [pscustomobject]@{ Metric = 'max private MB'; Value = [math]::Round($privateMax.PrivateKB / 1024, 1); Reason = $privateMax.Reason },
-        [pscustomobject]@{ Metric = 'max working set MB'; Value = [math]::Round($workingMax.WorkingSetKB / 1024, 1); Reason = $workingMax.Reason },
-        [pscustomobject]@{ Metric = 'min free VAS MB'; Value = $vasMin.VasFreeMB; Reason = $vasMin.Reason },
-        [pscustomobject]@{ Metric = 'min largest free VAS block MB'; Value = $largestMin.VasLargestFreeMB; Reason = $largestMin.Reason },
-        [pscustomobject]@{ Metric = 'max GDI objects'; Value = $gdiMax.GdiObjects; Reason = $gdiMax.Reason },
-        [pscustomobject]@{ Metric = 'max USER objects'; Value = $userMax.UserObjects; Reason = $userMax.Reason }
+        [pscustomobject]@{ Metric = 'max private MB'; Value = [math]::Round($privateMax.PrivateKB / 1024, 1); Reason = $privateMax.Reason; Time = $privateMax.Time },
+        [pscustomobject]@{ Metric = 'max working set MB'; Value = [math]::Round($workingMax.WorkingSetKB / 1024, 1); Reason = $workingMax.Reason; Time = $workingMax.Time },
+        [pscustomobject]@{ Metric = 'min free VAS MB'; Value = $vasMin.VasFreeMB; Reason = $vasMin.Reason; Time = $vasMin.Time },
+        [pscustomobject]@{ Metric = 'min largest free VAS block MB'; Value = $largestMin.VasLargestFreeMB; Reason = $largestMin.Reason; Time = $largestMin.Time },
+        [pscustomobject]@{ Metric = 'max GDI objects'; Value = $gdiMax.GdiObjects; Reason = $gdiMax.Reason; Time = $gdiMax.Time },
+        [pscustomobject]@{ Metric = 'max USER objects'; Value = $userMax.UserObjects; Reason = $userMax.Reason; Time = $userMax.Time }
     )
 }
 
@@ -693,6 +754,13 @@ else {
     $lines.Add('')
     Add-MarkdownTable $lines @('Error', 'Count') (New-CountRows $logSummary.Direct9TextureErrors 'Error' $Top)
 
+    $lines.Add('### Texture failure memory correlation')
+    $lines.Add('')
+    $textureMemoryRows = @()
+    $textureMemoryRows += New-NearestMemoryRows $probeSummary.MemorySnapshots 'first texture failure' $logSummary.TextureFailureFirst
+    $textureMemoryRows += New-NearestMemoryRows $probeSummary.MemorySnapshots 'last texture failure' $logSummary.TextureFailureLast
+    Add-MarkdownTable $lines @('Signal', 'SignalTime', 'Snapshot', 'SnapshotTime', 'DeltaSeconds', 'Reason', 'PrivateMB', 'LargestFreeVasMB', 'GdiObjects', 'UserObjects') $textureMemoryRows
+
     $lines.Add('### Texture failure paths')
     $lines.Add('')
     Add-MarkdownTable $lines @('Texture', 'Count') (New-CountRows $logSummary.TextureFailures 'Texture' $Top)
@@ -756,7 +824,7 @@ else {
 
     $lines.Add('### Memory snapshots')
     $lines.Add('')
-    Add-MarkdownTable $lines @('Metric', 'Value', 'Reason') (New-MemorySummaryRows $probeSummary.MemorySnapshots)
+    Add-MarkdownTable $lines @('Metric', 'Value', 'Reason', 'Time') (New-MemorySummaryRows $probeSummary.MemorySnapshots)
 }
 
 $lines.Add('## Session interpretation')

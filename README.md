@@ -54,6 +54,8 @@ available system commit/physical memory, total free 32-bit virtual address
 space, largest free virtual address block, and current GDI/USER object counts.
 The largest free virtual block is especially useful for OMSI because a patched
 32-bit executable can still fail when the address space becomes fragmented.
+New snapshots include a local timestamp so the analyzer can correlate resource
+pressure with logfile events such as texture `E_OUTOFMEMORY` bursts.
 
 The session analyzer also includes a known-error catalog for recurring OMSI
 messages such as Direct3D reset failures, range/list checks, invalid float

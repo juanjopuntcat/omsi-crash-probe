@@ -74,6 +74,8 @@ struct AddressSpaceSnapshot {
     unsigned long long largestFreeBytes;
 };
 
+static void FormatSystemTime(const SYSTEMTIME& time, char* buffer, size_t bufferSize);
+
 // Append one CRLF-terminated line to probe.log. This function avoids C++ iostreams
 // and heap-heavy logging so it remains small and predictable inside OMSI.
 static void AppendLine(const char* line) {
@@ -166,11 +168,17 @@ static void LogMemorySnapshot(const char* reason) {
     DWORD userObjects = GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS);
     AddressSpaceSnapshot addressSpace = QueryAddressSpaceSnapshot();
 
+    SYSTEMTIME now = {};
+    GetLocalTime(&now);
+    char timestamp[64] = {};
+    FormatSystemTime(now, timestamp, sizeof(timestamp));
+
     char line[1024] = {};
     snprintf(
         line,
         sizeof(line),
-        "MemorySnapshot reason=\"%s\" privateKB=%llu workingSetKB=%llu peakWorkingSetKB=%llu pagefileKB=%llu commitAvailMB=%llu physAvailMB=%llu vasFreeMB=%llu vasLargestFreeMB=%llu gdiObjects=%lu userObjects=%lu countersOk=%lu systemOk=%lu",
+        "MemorySnapshot time=\"%s\" reason=\"%s\" privateKB=%llu workingSetKB=%llu peakWorkingSetKB=%llu pagefileKB=%llu commitAvailMB=%llu physAvailMB=%llu vasFreeMB=%llu vasLargestFreeMB=%llu gdiObjects=%lu userObjects=%lu countersOk=%lu systemOk=%lu",
+        timestamp,
         reason ? reason : "<unknown>",
         hasProcessMemory ? BytesToKB(static_cast<unsigned long long>(processMemory.PrivateUsage)) : 0ULL,
         hasProcessMemory ? BytesToKB(static_cast<unsigned long long>(processMemory.WorkingSetSize)) : 0ULL,

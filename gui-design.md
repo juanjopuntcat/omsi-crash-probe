@@ -66,6 +66,9 @@ The bug table supports stable ascending/descending sorting on every column and
 three manifest-aware filters: all bugs, bugs with an approved fix, and bugs
 without an approved fix. Rows retain their immutable bug index through sorting
 and filtering so review and patch actions cannot target a visual row number.
+The approved-fix view enables a subordinate installation-state filter for any,
+not applied, or applied patches. The subordinate filter is disabled and reset
+outside that view so its scope remains unambiguous.
 
 ## Delivery stages
 

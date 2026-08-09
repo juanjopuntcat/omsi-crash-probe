@@ -349,7 +349,10 @@ a stable responsive layout with a minimum usable window size.
 The bug table supports ascending and descending sorting from every column
 header. Its filter can show all bugs, only bugs with an approved manifest fix,
 or only bugs without one. Filtering is based on manifest ownership, so applied
-and currently incompatible fixes still remain in the approved-fix view.
+and currently incompatible fixes still remain in the approved-fix view. That
+view enables a second filter for any patch state, not applied, or applied;
+"not applied" includes compatible and incompatible fixes that are absent from
+the selected installation.
 
 The shared native core provides tested audit, apply, backup, atomic replace,
 and rollback primitives. The GUI obtains every offset and byte sequence from

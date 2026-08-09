@@ -35,7 +35,8 @@ enum ControlId {
     IdInspect,
     IdBugList,
     IdApply,
-    IdFilter
+    IdFilter,
+    IdPatchStateFilter
 };
 
 enum DialogButtonId {
@@ -92,6 +93,7 @@ HWND g_subtitle = nullptr;
 HWND g_pathLabel = nullptr;
 HWND g_bugsLabel = nullptr;
 HWND g_filter = nullptr;
+HWND g_patchStateFilter = nullptr;
 HFONT g_uiFont = nullptr;
 HFONT g_titleFont = nullptr;
 HFONT g_sectionFont = nullptr;
@@ -269,14 +271,25 @@ void UpdateSortIndicator() {
 
 void UpdateActionButton();
 
+void UpdateFilterControls() {
+    const int filter = static_cast<int>(SendMessageW(g_filter, CB_GETCURSEL, 0, 0));
+    const bool withFix = filter == 1;
+    EnableWindow(g_patchStateFilter, withFix);
+    if (!withFix) SendMessageW(g_patchStateFilter, CB_SETCURSEL, 0, 0);
+}
+
 void PopulateBugs() {
     size_t selectedBug = kBugs.size();
     BugIndexFromRow(ListView_GetNextItem(g_list, -1, LVNI_SELECTED), &selectedBug);
     const int filter = g_filter == nullptr ? 0 : static_cast<int>(SendMessageW(g_filter, CB_GETCURSEL, 0, 0));
+    const int patchStateFilter = g_patchStateFilter == nullptr ? 0 :
+        static_cast<int>(SendMessageW(g_patchStateFilter, CB_GETCURSEL, 0, 0));
     std::vector<size_t> visible;
     for (size_t index = 0; index < kBugs.size(); ++index) {
         const bool hasFix = g_bugPatchIndex[index] >= 0;
         if ((filter == 1 && !hasFix) || (filter == 2 && hasFix)) continue;
+        if (filter == 1 && patchStateFilter == 1 && g_fixStates[index] == FixState::Applied) continue;
+        if (filter == 1 && patchStateFilter == 2 && g_fixStates[index] != FixState::Applied) continue;
         visible.push_back(index);
     }
     std::stable_sort(visible.begin(), visible.end(), [](size_t left, size_t right) {
@@ -599,7 +612,8 @@ void Layout(HWND window) {
     MoveWindow(g_identity, 40, 169, width - 80, 24, TRUE);
     MoveWindow(g_compatibility, 40, 197, width - 80, 24, TRUE);
     MoveWindow(g_bugsLabel, 28, 242, 300, 28, TRUE);
-    MoveWindow(g_filter, width - 266, 238, 238, 220, TRUE);
+    MoveWindow(g_filter, width - 466, 238, 230, 220, TRUE);
+    MoveWindow(g_patchStateFilter, width - 224, 238, 196, 220, TRUE);
     MoveWindow(g_list, 28, 276, width - 56, (std::max)(160, height - 358), TRUE);
     MoveWindow(g_fixSummary, 34, height - 61, width - 250, 30, TRUE);
     MoveWindow(g_apply, width - 210, height - 68, 182, 40, TRUE);
@@ -632,10 +646,17 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             SetFont(g_bugsLabel, g_sectionFont);
             g_filter = AddControl(window, WC_COMBOBOXW, L"",
                 WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, IdFilter);
-            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"All bugs"));
-            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"With approved fix"));
-            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Without approved fix"));
+            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"All documented bugs"));
+            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Documented with fix"));
+            SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Documented without fix"));
             SendMessageW(g_filter, CB_SETCURSEL, 0, 0);
+            g_patchStateFilter = AddControl(window, WC_COMBOBOXW, L"",
+                WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, IdPatchStateFilter);
+            SendMessageW(g_patchStateFilter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Any patch state"));
+            SendMessageW(g_patchStateFilter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Not applied"));
+            SendMessageW(g_patchStateFilter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Applied"));
+            SendMessageW(g_patchStateFilter, CB_SETCURSEL, 0, 0);
+            EnableWindow(g_patchStateFilter, FALSE);
             g_list = CreateWindowExW(0, WC_LISTVIEWW, L"",
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
                 0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdBugList), GetModuleHandleW(nullptr), nullptr);
@@ -729,7 +750,11 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             if (LOWORD(wParam) == IdBrowse) BrowseForOmsi(window);
             if (LOWORD(wParam) == IdInspect) InspectSelectedFile(window);
             if (LOWORD(wParam) == IdApply) ShowSelectedBugDialog(window);
-            if (LOWORD(wParam) == IdFilter && HIWORD(wParam) == CBN_SELCHANGE) PopulateBugs();
+            if (LOWORD(wParam) == IdFilter && HIWORD(wParam) == CBN_SELCHANGE) {
+                UpdateFilterControls();
+                PopulateBugs();
+            }
+            if (LOWORD(wParam) == IdPatchStateFilter && HIWORD(wParam) == CBN_SELCHANGE) PopulateBugs();
             return 0;
         case WM_NOTIFY:
             if (reinterpret_cast<NMHDR*>(lParam)->hwndFrom == g_list) {

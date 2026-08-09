@@ -55,6 +55,11 @@ compact branded header, restrained neutral surfaces, clear installation and
 action bands, alternating rows, contextual status colors, and a minimum window
 size that preserves the layout.
 
+Activating a row opens a native bug-review dialog. It always explains the
+finding and proposed solution, but exposes Apply or Rollback only when the
+manifest binding and audited installation state permit that exact operation.
+Patch ID, target, and backup path are shown in expandable technical details.
+
 ## Delivery stages
 
 1. Extract PE identity and patch operations into a reusable C++ core with JSON

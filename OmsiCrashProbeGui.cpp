@@ -36,6 +36,11 @@ enum ControlId {
     IdApply
 };
 
+enum DialogButtonId {
+    IdDialogApply = 2001,
+    IdDialogRollback
+};
+
 struct BugEntry {
     uint32_t rva;
     const wchar_t* title;
@@ -252,9 +257,8 @@ bool IsOmsiRunning() {
 
 void UpdateActionButton() {
     const int row = ListView_GetNextItem(g_list, -1, LVNI_SELECTED);
-    const FixState state = row >= 0 ? g_fixStates[static_cast<size_t>(row)] : FixState::None;
-    SetWindowTextW(g_apply, state == FixState::Applied ? L"Rollback selected fix" : L"Apply selected fix");
-    EnableWindow(g_apply, state == FixState::Available || state == FixState::Applied);
+    SetWindowTextW(g_apply, L"Review selected bug");
+    EnableWindow(g_apply, row >= 0);
 }
 
 void ClassifyFixes() {
@@ -381,25 +385,18 @@ void InspectSelectedFile(HWND window) {
     InvalidateRect(window, nullptr, TRUE);
 }
 
-void ExecuteSelectedAction(HWND window) {
-    const int row = ListView_GetNextItem(g_list, -1, LVNI_SELECTED);
-    if (row < 0 || static_cast<size_t>(row) >= kBugs.size()) return;
+bool PerformSelectedAction(HWND window, int row) {
+    if (row < 0 || static_cast<size_t>(row) >= kBugs.size()) return false;
     const int patchIndex = g_bugPatchIndex[static_cast<size_t>(row)];
     const FixState state = g_fixStates[static_cast<size_t>(row)];
-    if (patchIndex < 0 || (state != FixState::Available && state != FixState::Applied)) return;
+    if (patchIndex < 0 || (state != FixState::Available && state != FixState::Applied)) return false;
     if (IsOmsiRunning()) {
         MessageBoxW(window, L"Close OMSI 2 before changing any game file.", L"OMSI is running", MB_OK | MB_ICONWARNING);
-        return;
+        return false;
     }
     const auto& patch = g_manifest.patches[static_cast<size_t>(patchIndex)];
     const std::wstring target = PatchTarget(patch);
     const std::wstring backup = omsi_patch::BackupPath(target, patch.id);
-    const std::wstring verb = state == FixState::Applied ? L"restore" : L"apply";
-    std::wstring prompt = L"This will " + verb + L" the approved fix:\n\n" + Wide(patch.title) +
-        L"\nID: " + Wide(patch.id) + L"\nTarget: " + target + L"\nBackup: " + backup +
-        L"\n\nOMSI must remain closed. Continue?";
-    if (MessageBoxW(window, prompt.c_str(), L"Confirm file change", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
-
     omsi_patch::PeImage original;
     omsi_patch::PatchRequest request;
     std::string error;
@@ -420,6 +417,70 @@ void ExecuteSelectedAction(HWND window) {
     MessageBoxW(window, ok ? (state == FixState::Applied ? L"Original file restored." : L"Fix applied successfully.")
         : Wide(error).c_str(), ok ? L"Operation complete" : L"Operation failed", MB_OK | (ok ? MB_ICONINFORMATION : MB_ICONERROR));
     InspectSelectedFile(window);
+    return ok;
+}
+
+void ShowSelectedBugDialog(HWND window) {
+    const int row = ListView_GetNextItem(g_list, -1, LVNI_SELECTED);
+    if (row < 0 || static_cast<size_t>(row) >= kBugs.size()) return;
+    const BugEntry& bug = kBugs[static_cast<size_t>(row)];
+    const FixState state = g_fixStates[static_cast<size_t>(row)];
+    const int patchIndex = g_bugPatchIndex[static_cast<size_t>(row)];
+
+    std::wstring instruction = bug.title;
+    std::wstring content = L"Bug description\n" + std::wstring(bug.description) +
+        L"\n\nCategory: " + bug.category + L"\nConfidence: " + bug.confidence +
+        L"\nRVA: " + bug.anchor;
+    std::wstring expanded;
+    std::wstring actionText;
+    TASKDIALOG_BUTTON action = {};
+    bool hasAction = false;
+
+    if (patchIndex < 0) {
+        content += L"\n\nProposed solution\nNo fix has been approved for this bug yet. The finding is available for diagnosis only.";
+    } else {
+        const auto& patch = g_manifest.patches[static_cast<size_t>(patchIndex)];
+        const std::wstring target = PatchTarget(patch);
+        content += L"\n\nProposed solution\n" + Wide(patch.rationale);
+        expanded = L"Patch ID: " + Wide(patch.id) + L"\nTarget: " + target +
+            L"\nBackup: " + omsi_patch::BackupPath(target, patch.id);
+        if (state == FixState::Available) {
+            content += L"\n\nStatus: compatible and ready to apply.";
+            action.nButtonID = IdDialogApply;
+            actionText = L"Apply fix\nCreate a verified backup and patch the selected installation";
+            hasAction = true;
+        } else if (state == FixState::Applied) {
+            content += L"\n\nStatus: this fix is currently applied.";
+            action.nButtonID = IdDialogRollback;
+            actionText = L"Rollback fix\nRestore the verified original backup";
+            hasAction = true;
+        } else {
+            content += L"\n\nStatus: incompatible with the selected installation. No file will be changed.";
+        }
+    }
+    action.pszButtonText = actionText.c_str();
+
+    TASKDIALOGCONFIG dialog = {sizeof(dialog)};
+    dialog.hwndParent = window;
+    dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_EXPAND_FOOTER_AREA;
+    if (hasAction) dialog.dwFlags |= TDF_USE_COMMAND_LINKS;
+    dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+    dialog.pszWindowTitle = L"OMSI Crash Probe - Bug review";
+    dialog.pszMainIcon = state == FixState::Available ? TD_SHIELD_ICON : TD_INFORMATION_ICON;
+    dialog.pszMainInstruction = instruction.c_str();
+    dialog.pszContent = content.c_str();
+    dialog.pszExpandedInformation = expanded.empty() ? nullptr : expanded.c_str();
+    dialog.pszExpandedControlText = L"Show technical details";
+    dialog.pszCollapsedControlText = L"Hide technical details";
+    dialog.pszFooter = hasAction ? L"OMSI must be closed before any game file can be changed." : nullptr;
+    dialog.cButtons = hasAction ? 1 : 0;
+    dialog.pButtons = hasAction ? &action : nullptr;
+    dialog.nDefaultButton = IDCLOSE;
+    int pressed = IDCLOSE;
+    if (SUCCEEDED(TaskDialogIndirect(&dialog, &pressed, nullptr, nullptr)) &&
+        (pressed == IdDialogApply || pressed == IdDialogRollback)) {
+        PerformSelectedAction(window, row);
+    }
 }
 
 void BrowseForOmsi(HWND window) {
@@ -497,7 +558,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             AddColumn(5, 430, L"Finding");
             PopulateBugs();
             g_fixSummary = AddControl(window, L"STATIC", L"0 approved fixes available", SS_LEFT | SS_CENTERIMAGE);
-            g_apply = AddControl(window, L"BUTTON", L"Apply selected fix", WS_TABSTOP | BS_OWNERDRAW, IdApply);
+            g_apply = AddControl(window, L"BUTTON", L"Review selected bug", WS_TABSTOP | BS_OWNERDRAW, IdApply);
             EnableWindow(g_apply, FALSE);
             LoadManifestStatus();
             Layout(window);
@@ -573,11 +634,12 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         case WM_COMMAND:
             if (LOWORD(wParam) == IdBrowse) BrowseForOmsi(window);
             if (LOWORD(wParam) == IdInspect) InspectSelectedFile(window);
-            if (LOWORD(wParam) == IdApply) ExecuteSelectedAction(window);
+            if (LOWORD(wParam) == IdApply) ShowSelectedBugDialog(window);
             return 0;
         case WM_NOTIFY:
             if (reinterpret_cast<NMHDR*>(lParam)->hwndFrom == g_list) {
                 if (reinterpret_cast<NMHDR*>(lParam)->code == LVN_ITEMCHANGED) UpdateActionButton();
+                if (reinterpret_cast<NMHDR*>(lParam)->code == LVN_ITEMACTIVATE) ShowSelectedBugDialog(window);
                 if (reinterpret_cast<NMHDR*>(lParam)->code == NM_CUSTOMDRAW)
                     return DrawBugList(reinterpret_cast<NMLVCUSTOMDRAW*>(lParam));
             }

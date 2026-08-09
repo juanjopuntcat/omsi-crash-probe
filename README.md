@@ -55,6 +55,12 @@ space, largest free virtual address block, and current GDI/USER object counts.
 The largest free virtual block is especially useful for OMSI because a patched
 32-bit executable can still fail when the address space becomes fragmented.
 
+The session analyzer also includes a known-error catalog for recurring OMSI
+messages such as Direct3D reset failures, range/list checks, invalid float
+conversions, Systemfehler Code 8, bitmap/image failures, and access violations
+in OMSI or DirectX/audio modules. These labels are triage hints that should be
+cross-checked against RVAs, stack candidates, and memory snapshots.
+
 Known RVA labels are context hints only. For example, an exception inside a
 Delphi managed-string helper usually means the useful owner is the caller that
 passed the bad string, not the helper itself.

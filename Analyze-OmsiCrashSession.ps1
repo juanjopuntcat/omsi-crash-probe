@@ -189,14 +189,131 @@ function Get-Family {
     return 'Other / unknown'
 }
 
+function Get-KnownErrorCatalog {
+    # These patterns codify the recurring OMSI errors collected from local
+    # sessions, public logfiles, and static string analysis. The Origin field is
+    # a triage hint, not proof of root cause.
+    @(
+        [pscustomobject]@{
+            Id = 'access-violation-omsi'
+            Match = '(?i)Zugriffsverletzung.*Omsi\.exe|AccessViolation.*Omsi\.exe'
+            Family = 'Access violation'
+            Origin = 'OMSI engine / Delphi runtime'
+            Next = 'Use module+RVA, stack candidates, and KnownRva labels.'
+        },
+        [pscustomobject]@{
+            Id = 'access-violation-null-read'
+            Match = '(?i)Zugriffsverletzung.*Lesen von Adresse 0{8}|Access violation.*read.*0x?0{8}'
+            Family = 'Access violation'
+            Origin = 'Null or near-null pointer read'
+            Next = 'Prioritize caller context; helper RVAs are often secondary.'
+        },
+        [pscustomobject]@{
+            Id = 'access-violation-directsound'
+            Match = '(?i)Zugriffsverletzung.*DSound\.dll|Access violation.*DSound\.dll'
+            Family = 'Audio / DirectSound boundary'
+            Origin = 'DirectSound DLL or OMSI audio caller'
+            Next = 'Correlate with sound loading, device changes, and caller stack.'
+        },
+        [pscustomobject]@{
+            Id = 'access-violation-d3d-driver'
+            Match = '(?i)Zugriffsverletzung.*(d3d9|nvd3dum)\.dll|Access violation.*(d3d9|nvd3dum)\.dll'
+            Family = 'Direct3D / driver boundary'
+            Origin = 'Direct3D runtime/driver called by OMSI'
+            Next = 'Correlate with texture pressure, device reset, and HRESULTs.'
+        },
+        [pscustomobject]@{
+            Id = 'direct3d-reset'
+            Match = '(?i)Direct-?3D-Device-Reset schlug fehl|Direct3D-Device lost|D3DERR_DEVICELOST|D3DERR_DEVICENOTRESET|D3DERR_INVALIDCALL'
+            Family = 'Direct3D device lost/reset'
+            Origin = 'OMSI Direct3D device reset path'
+            Next = 'Check reset RVA labels, window focus/device loss, and resources.'
+        },
+        [pscustomobject]@{
+            Id = 'direct3d-memory'
+            Match = '(?i)D3DERR_OUTOFVIDEOMEMORY|E_OUTOFMEMORY|Texturladen - Direct9 Error|DirectX/texture out of memory'
+            Family = 'Direct3D / texture memory'
+            Origin = 'D3DX texture/image allocation path'
+            Next = 'Compare with VAS largest-free block and texture failed paths.'
+        },
+        [pscustomobject]@{
+            Id = 'texture-failed'
+            Match = '(?i)Texture ".+" failed!'
+            Family = 'Texture load failure'
+            Origin = 'OMSI texture manager / D3DX callee'
+            Next = 'Use the path as evidence only; do not scan asset folders.'
+        },
+        [pscustomobject]@{
+            Id = 'bitmap-image-format'
+            Match = '(?i)Bitmap ist|Unbekannte Bilddatei|ungueltiges Bild|ung.ltiges Bild|unknown image'
+            Family = 'Bitmap / image format'
+            Origin = 'Bitmap loader, image parser, or GDI allocation path'
+            Next = 'Correlate with bitmap RVAs, Systemfehler Code 8, and GDI count.'
+        },
+        [pscustomobject]@{
+            Id = 'system-error-code-8'
+            Match = '(?i)Systemfehler\.\s+Code:\s*8|not enough memory resources|No hay suficientes recursos de memoria'
+            Family = 'Memory / resource pressure'
+            Origin = 'Win32 GetLastError path surfaced by OMSI'
+            Next = 'Check private memory, VAS fragmentation, GDI, and USER counts.'
+        },
+        [pscustomobject]@{
+            Id = 'omsi-out-of-memory'
+            Match = '(?i)Zu wenig Arbeitsspeicher|Out of memory|insufficient memory'
+            Family = 'Memory / resource pressure'
+            Origin = 'OMSI, Delphi runtime, or D3DX allocation failure'
+            Next = 'Use surrounding function tag such as P.KillNotNeededBuses.'
+        },
+        [pscustomobject]@{
+            Id = 'bounds-list-range'
+            Match = '(?i)Fehler bei Bereich|Bereichspr|Argument au.erhalb|Listenindex|array bounds'
+            Family = 'Bounds / list / argument checks'
+            Origin = 'Delphi range/list/argument guard'
+            Next = 'Use attached OMSI context tag and caller stack if present.'
+        },
+        [pscustomobject]@{
+            Id = 'numeric-float'
+            Match = '(?i)Gleitkommawert|Gleitkommadivision|floating|ZeroDivide|division durch null'
+            Family = 'Numeric / floating point'
+            Origin = 'Delphi numeric conversion or arithmetic path'
+            Next = 'Distinguish bad input conversion from true arithmetic divide.'
+        },
+        [pscustomobject]@{
+            Id = 'invalid-variable-name'
+            Match = '(?i)Variablenname.*ung.ltig|invalid variable'
+            Family = 'Script / variable binding'
+            Origin = 'OMSI script command parser'
+            Next = 'Use command text and vehicle path already present in logfile.'
+        },
+        [pscustomobject]@{
+            Id = 'external-c06d007e'
+            Match = '(?i)C06D007E|requested resource is in use|angeforderte Ressource'
+            Family = 'External / resource in use'
+            Origin = 'External exception or OS resource contention'
+            Next = 'Correlate with module, file access, plugins, and timing.'
+        },
+        [pscustomobject]@{
+            Id = 'missing-context-help'
+            Match = '(?i)Keine kontextsensitive Hilfe'
+            Family = 'Low-priority UI/help runtime'
+            Origin = 'Delphi/VCL help system'
+            Next = 'Usually deprioritize unless it appears beside a fatal error.'
+        }
+    )
+}
+
 function Analyze-Logfile {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [object[]]$KnownErrorCatalog
+    )
 
     $result = [ordered]@{
         Exists = Test-Path -LiteralPath $Path
         Path = $Path
         LineCount = 0
         Categories = New-Counter
+        KnownErrorPatterns = New-Counter
         ErrorTexts = New-Counter
         SystemErrorContexts = New-Counter
         TextureFailures = New-Counter
@@ -237,6 +354,12 @@ function Analyze-Logfile {
 
         foreach ($category in $categoryHits) {
             Add-Count $result.Categories $category
+        }
+
+        foreach ($knownError in $KnownErrorCatalog) {
+            if ($line -match $knownError.Match) {
+                Add-Count $result.KnownErrorPatterns $knownError.Id
+            }
         }
 
         if ($line -match '(?i)Systemfehler\.\s+Code:\s*8') {
@@ -431,6 +554,30 @@ function New-CountRows {
     })
 }
 
+function New-KnownErrorRows {
+    param(
+        [System.Collections.Generic.Dictionary[string,int]]$Counter,
+        [object[]]$Catalog,
+        [int]$Limit = $Top
+    )
+
+    $catalogById = @{}
+    foreach ($entry in $Catalog) {
+        $catalogById[$entry.Id] = $entry
+    }
+
+    @(Get-TopCounts $Counter $Limit | ForEach-Object {
+        $entry = $catalogById[$_.Key]
+        [pscustomobject]@{
+            Pattern = if ($entry) { $entry.Id } else { $_.Key }
+            Family = if ($entry) { $entry.Family } else { '' }
+            Origin = if ($entry) { $entry.Origin } else { '' }
+            Count = $_.Value
+            Next = if ($entry) { $entry.Next } else { '' }
+        }
+    })
+}
+
 function New-MemorySummaryRows {
     param([object[]]$Snapshots)
 
@@ -456,7 +603,8 @@ function New-MemorySummaryRows {
 }
 
 $knownRvas = Import-KnownRvaTable $KnownRvaSourcePath
-$logSummary = Analyze-Logfile $LogfilePath
+$knownErrorCatalog = Get-KnownErrorCatalog
+$logSummary = Analyze-Logfile $LogfilePath $knownErrorCatalog
 $probeSummary = Analyze-ProbeLog $ProbeLogPath $knownRvas
 
 $lines = New-Object 'System.Collections.Generic.List[string]'
@@ -491,6 +639,10 @@ else {
     $lines.Add('### Log categories')
     $lines.Add('')
     Add-MarkdownTable $lines @('Category', 'Count') (New-CountRows $logSummary.Categories 'Category' $Top)
+
+    $lines.Add('### Known error patterns')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Pattern', 'Family', 'Origin', 'Count', 'Next') (New-KnownErrorRows $logSummary.KnownErrorPatterns $knownErrorCatalog $Top)
 
     $lines.Add('### Systemfehler Code 8 contexts')
     $lines.Add('')

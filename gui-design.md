@@ -50,6 +50,11 @@ is running. No action is currently selectable because the committed approved
 manifest is empty. Windows version metadata and the DPI/Common Controls
 manifest are embedded resources in `OmsiCrashProbe.exe`.
 
+The implemented visual system keeps native Windows controls while adding a
+compact branded header, restrained neutral surfaces, clear installation and
+action bands, alternating rows, contextual status colors, and a minimum window
+size that preserves the layout.
+
 ## Delivery stages
 
 1. Extract PE identity and patch operations into a reusable C++ core with JSON

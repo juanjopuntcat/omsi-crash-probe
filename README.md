@@ -334,6 +334,10 @@ runtime so OMSI's adjacent legacy runtime DLLs cannot satisfy its dependencies.
 - visible fix state, confidence, RVA, and the static finding; and
 - manifest-bound Apply and Rollback actions for individually selected fixes.
 
+The compact native workspace uses a restrained high-contrast header, grouped
+installation status, alternating table rows, contextual fix-state colors, and
+a stable responsive layout with a minimum usable window size.
+
 The shared native core provides tested audit, apply, backup, atomic replace,
 and rollback primitives. The GUI obtains every offset and byte sequence from
 the validated manifest; it never duplicates patch data in UI code.

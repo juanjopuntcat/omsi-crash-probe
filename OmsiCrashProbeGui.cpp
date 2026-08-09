@@ -75,14 +75,31 @@ HWND g_apply = nullptr;
 HWND g_identity = nullptr;
 HWND g_compatibility = nullptr;
 HWND g_fixSummary = nullptr;
+HWND g_title = nullptr;
+HWND g_subtitle = nullptr;
+HWND g_pathLabel = nullptr;
+HWND g_bugsLabel = nullptr;
 HFONT g_uiFont = nullptr;
 HFONT g_titleFont = nullptr;
+HFONT g_sectionFont = nullptr;
+HBRUSH g_backgroundBrush = nullptr;
+HBRUSH g_headerBrush = nullptr;
+HBRUSH g_panelBrush = nullptr;
 omsi_patch::PatchManifest g_manifest;
 enum class FixState { None, Incompatible, Available, Applied };
 std::array<int, kBugs.size()> g_bugPatchIndex = {};
 std::array<FixState, kBugs.size()> g_fixStates = {};
 std::wstring g_omsiRoot;
 bool g_manifestLoaded = false;
+
+constexpr COLORREF kBackground = RGB(244, 246, 247);
+constexpr COLORREF kHeader = RGB(34, 39, 41);
+constexpr COLORREF kPanel = RGB(255, 255, 255);
+constexpr COLORREF kText = RGB(35, 42, 45);
+constexpr COLORREF kMuted = RGB(102, 113, 118);
+constexpr COLORREF kAccent = RGB(20, 126, 116);
+constexpr COLORREF kAccentPressed = RGB(15, 103, 95);
+constexpr COLORREF kBorder = RGB(216, 222, 224);
 
 std::wstring Wide(const std::string& text) {
     if (text.empty()) return {};
@@ -110,6 +127,74 @@ void AddColumn(int index, int width, const wchar_t* title) {
     column.cx = width;
     column.iSubItem = index;
     ListView_InsertColumn(g_list, index, &column);
+}
+
+void FillSolidRect(HDC dc, const RECT& rect, COLORREF color) {
+    HBRUSH brush = CreateSolidBrush(color);
+    FillRect(dc, &rect, brush);
+    DeleteObject(brush);
+}
+
+void DrawPanel(HDC dc, const RECT& rect) {
+    FillRect(dc, &rect, g_panelBrush);
+    HPEN pen = CreatePen(PS_SOLID, 1, kBorder);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
+    SelectObject(dc, oldBrush);
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+}
+
+void DrawButton(const DRAWITEMSTRUCT& item) {
+    const bool disabled = (item.itemState & ODS_DISABLED) != 0;
+    const bool pressed = (item.itemState & ODS_SELECTED) != 0;
+    COLORREF background = disabled ? RGB(222, 226, 227) : (pressed ? kAccentPressed : kAccent);
+    COLORREF foreground = disabled ? RGB(143, 151, 154) : RGB(255, 255, 255);
+    FillSolidRect(item.hDC, item.rcItem, kBackground);
+    HBRUSH brush = CreateSolidBrush(background);
+    HPEN pen = CreatePen(PS_SOLID, 1, background);
+    HGDIOBJ oldBrush = SelectObject(item.hDC, brush);
+    HGDIOBJ oldPen = SelectObject(item.hDC, pen);
+    RoundRect(item.hDC, item.rcItem.left, item.rcItem.top, item.rcItem.right,
+        item.rcItem.bottom, 7, 7);
+    SelectObject(item.hDC, oldPen);
+    SelectObject(item.hDC, oldBrush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+    wchar_t text[96] = {};
+    GetWindowTextW(item.hwndItem, text, static_cast<int>(std::size(text)));
+    SetBkMode(item.hDC, TRANSPARENT);
+    SetTextColor(item.hDC, foreground);
+    SelectObject(item.hDC, g_uiFont);
+    RECT textRect = item.rcItem;
+    DrawTextW(item.hDC, text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    if ((item.itemState & ODS_FOCUS) != 0 && !disabled) {
+        RECT focus = item.rcItem;
+        InflateRect(&focus, -4, -4);
+        DrawFocusRect(item.hDC, &focus);
+    }
+}
+
+LRESULT DrawBugList(NMLVCUSTOMDRAW* draw) {
+    switch (draw->nmcd.dwDrawStage) {
+        case CDDS_PREPAINT:
+            return CDRF_NOTIFYITEMDRAW;
+        case CDDS_ITEMPREPAINT:
+            return CDRF_NOTIFYSUBITEMDRAW;
+        case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
+            const size_t row = static_cast<size_t>(draw->nmcd.dwItemSpec);
+            draw->clrText = kText;
+            draw->clrTextBk = row % 2 == 0 ? RGB(255, 255, 255) : RGB(248, 250, 250);
+            if (draw->iSubItem == 2 && row < g_fixStates.size()) {
+                if (g_fixStates[row] == FixState::Available) draw->clrText = RGB(0, 112, 83);
+                if (g_fixStates[row] == FixState::Applied) draw->clrText = RGB(30, 92, 165);
+                if (g_fixStates[row] == FixState::Incompatible) draw->clrText = RGB(170, 68, 45);
+            }
+            return CDRF_NEWFONT;
+        }
+    }
+    return CDRF_DODEFAULT;
 }
 
 void PopulateBugs() {
@@ -287,9 +372,9 @@ void InspectSelectedFile(HWND window) {
     SetWindowTextW(g_identity, identity);
     const std::wstring hash = Wide(image.identity.sha256);
     if (_wcsicmp(hash.c_str(), kKnownHash) == 0) {
-        SetWindowTextW(g_compatibility, L"Compatibility: known OMSI 2 profile. Diagnostics available; no approved fixes yet.");
+        SetWindowTextW(g_compatibility, L"Compatibility: known OMSI 2 profile. Fix eligibility is shown in the table below.");
     } else {
-        SetWindowTextW(g_compatibility, L"Compatibility: unknown executable profile. Patching remains disabled.");
+        SetWindowTextW(g_compatibility, L"Compatibility: unknown executable profile. Only exact manifest matches are eligible.");
     }
     if (g_manifestLoaded) ClassifyFixes();
     else EnableWindow(g_apply, FALSE);
@@ -357,42 +442,53 @@ void Layout(HWND window) {
     GetClientRect(window, &client);
     const int width = client.right;
     const int height = client.bottom;
-    MoveWindow(g_path, 24, 76, (std::max)(260, width - 300), 30, TRUE);
-    MoveWindow(g_browse, width - 264, 76, 112, 30, TRUE);
-    MoveWindow(g_inspect, width - 144, 76, 120, 30, TRUE);
-    MoveWindow(g_identity, 24, 122, width - 48, 24, TRUE);
-    MoveWindow(g_compatibility, 24, 148, width - 48, 24, TRUE);
-    MoveWindow(g_list, 24, 202, width - 48, (std::max)(160, height - 278), TRUE);
-    MoveWindow(g_fixSummary, 24, height - 56, width - 220, 30, TRUE);
-    MoveWindow(g_apply, width - 188, height - 62, 164, 36, TRUE);
+    MoveWindow(g_title, 28, 14, 420, 32, TRUE);
+    MoveWindow(g_subtitle, 29, 45, width - 58, 20, TRUE);
+    MoveWindow(g_pathLabel, 28, 92, 180, 20, TRUE);
+    MoveWindow(g_path, 28, 116, (std::max)(260, width - 326), 32, TRUE);
+    MoveWindow(g_browse, width - 290, 116, 118, 32, TRUE);
+    MoveWindow(g_inspect, width - 160, 114, 132, 36, TRUE);
+    MoveWindow(g_identity, 40, 169, width - 80, 24, TRUE);
+    MoveWindow(g_compatibility, 40, 197, width - 80, 24, TRUE);
+    MoveWindow(g_bugsLabel, 28, 242, 300, 28, TRUE);
+    MoveWindow(g_list, 28, 276, width - 56, (std::max)(160, height - 358), TRUE);
+    MoveWindow(g_fixSummary, 34, height - 61, width - 250, 30, TRUE);
+    MoveWindow(g_apply, width - 210, height - 68, 182, 40, TRUE);
 }
 
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_CREATE: {
+            g_backgroundBrush = CreateSolidBrush(kBackground);
+            g_headerBrush = CreateSolidBrush(kHeader);
+            g_panelBrush = CreateSolidBrush(kPanel);
             g_uiFont = CreateFontW(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
             g_titleFont = CreateFontW(-25, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                 OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-            HWND title = AddControl(window, L"STATIC", L"OMSI Crash Probe", SS_LEFT);
-            SetFont(title, g_titleFont);
-            MoveWindow(title, 24, 20, 420, 34, TRUE);
-            HWND pathLabel = AddControl(window, L"STATIC", L"OMSI executable", SS_LEFT);
-            MoveWindow(pathLabel, 24, 56, 180, 20, TRUE);
+            g_sectionFont = CreateFontW(-19, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+            g_title = AddControl(window, L"STATIC", L"OMSI Crash Probe", SS_LEFT);
+            SetFont(g_title, g_titleFont);
+            g_subtitle = AddControl(window, L"STATIC", L"Diagnostics and guarded patch manager", SS_LEFT);
+            g_pathLabel = AddControl(window, L"STATIC", L"OMSI installation", SS_LEFT);
+            SetFont(g_pathLabel, g_sectionFont);
             g_path = AddControl(window, L"EDIT", L"",
                 WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, IdPath);
             g_browse = AddControl(window, L"BUTTON", L"Browse...", WS_TABSTOP | BS_PUSHBUTTON, IdBrowse);
-            g_inspect = AddControl(window, L"BUTTON", L"Inspect", WS_TABSTOP | BS_DEFPUSHBUTTON, IdInspect);
+            g_inspect = AddControl(window, L"BUTTON", L"Inspect", WS_TABSTOP | BS_OWNERDRAW, IdInspect);
             g_identity = AddControl(window, L"STATIC", L"Executable: not inspected", SS_LEFT);
             g_compatibility = AddControl(window, L"STATIC", L"Compatibility: unknown", SS_LEFT);
-            HWND bugsLabel = AddControl(window, L"STATIC", L"Documented bugs", SS_LEFT);
-            SetFont(bugsLabel, g_titleFont);
-            MoveWindow(bugsLabel, 24, 174, 300, 30, TRUE);
-            g_list = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
+            g_bugsLabel = AddControl(window, L"STATIC", L"Documented bugs", SS_LEFT);
+            SetFont(g_bugsLabel, g_sectionFont);
+            g_list = CreateWindowExW(0, WC_LISTVIEWW, L"",
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
                 0, 0, 0, 0, window, reinterpret_cast<HMENU>(IdBugList), GetModuleHandleW(nullptr), nullptr);
             SetFont(g_list);
-            ListView_SetExtendedListViewStyle(g_list, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_DOUBLEBUFFER);
+            ListView_SetExtendedListViewStyle(g_list, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_LABELTIP);
+            ListView_SetBkColor(g_list, kPanel);
+            ListView_SetTextBkColor(g_list, kPanel);
+            ListView_SetTextColor(g_list, kText);
             AddColumn(0, 250, L"Bug");
             AddColumn(1, 140, L"Category");
             AddColumn(2, 150, L"Fix status");
@@ -401,7 +497,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             AddColumn(5, 430, L"Finding");
             PopulateBugs();
             g_fixSummary = AddControl(window, L"STATIC", L"0 approved fixes available", SS_LEFT | SS_CENTERIMAGE);
-            g_apply = AddControl(window, L"BUTTON", L"Apply selected fix", WS_TABSTOP | BS_PUSHBUTTON, IdApply);
+            g_apply = AddControl(window, L"BUTTON", L"Apply selected fix", WS_TABSTOP | BS_OWNERDRAW, IdApply);
             EnableWindow(g_apply, FALSE);
             LoadManifestStatus();
             Layout(window);
@@ -417,18 +513,82 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         case WM_SIZE:
             Layout(window);
             return 0;
+        case WM_GETMINMAXINFO: {
+            auto* limits = reinterpret_cast<MINMAXINFO*>(lParam);
+            limits->ptMinTrackSize.x = 900;
+            limits->ptMinTrackSize.y = 640;
+            return 0;
+        }
+        case WM_ERASEBKGND: {
+            RECT client = {};
+            GetClientRect(window, &client);
+            FillRect(reinterpret_cast<HDC>(wParam), &client, g_backgroundBrush);
+            return 1;
+        }
+        case WM_PAINT: {
+            PAINTSTRUCT paint = {};
+            HDC dc = BeginPaint(window, &paint);
+            RECT client = {};
+            GetClientRect(window, &client);
+            RECT header = {0, 0, client.right, 76};
+            FillRect(dc, &header, g_headerBrush);
+            RECT accent = {0, 72, client.right, 76};
+            FillSolidRect(dc, accent, kAccent);
+            RECT details = {28, 160, client.right - 28, 228};
+            DrawPanel(dc, details);
+            RECT footer = {28, client.bottom - 76, client.right - 28, client.bottom - 20};
+            DrawPanel(dc, footer);
+            EndPaint(window, &paint);
+            return 0;
+        }
+        case WM_CTLCOLORSTATIC: {
+            HDC dc = reinterpret_cast<HDC>(wParam);
+            HWND control = reinterpret_cast<HWND>(lParam);
+            SetBkMode(dc, TRANSPARENT);
+            if (control == g_title) {
+                SetTextColor(dc, RGB(255, 255, 255));
+                return reinterpret_cast<INT_PTR>(g_headerBrush);
+            }
+            if (control == g_subtitle) {
+                SetTextColor(dc, RGB(190, 201, 204));
+                return reinterpret_cast<INT_PTR>(g_headerBrush);
+            }
+            SetTextColor(dc, control == g_fixSummary ? kMuted : kText);
+            if (control == g_identity || control == g_compatibility || control == g_fixSummary)
+                return reinterpret_cast<INT_PTR>(g_panelBrush);
+            return reinterpret_cast<INT_PTR>(g_backgroundBrush);
+        }
+        case WM_CTLCOLOREDIT: {
+            HDC dc = reinterpret_cast<HDC>(wParam);
+            SetTextColor(dc, kText);
+            SetBkColor(dc, kPanel);
+            return reinterpret_cast<INT_PTR>(g_panelBrush);
+        }
+        case WM_DRAWITEM:
+            if (wParam == IdInspect || wParam == IdApply) {
+                DrawButton(*reinterpret_cast<DRAWITEMSTRUCT*>(lParam));
+                return TRUE;
+            }
+            break;
         case WM_COMMAND:
             if (LOWORD(wParam) == IdBrowse) BrowseForOmsi(window);
             if (LOWORD(wParam) == IdInspect) InspectSelectedFile(window);
             if (LOWORD(wParam) == IdApply) ExecuteSelectedAction(window);
             return 0;
         case WM_NOTIFY:
-            if (reinterpret_cast<NMHDR*>(lParam)->hwndFrom == g_list &&
-                reinterpret_cast<NMHDR*>(lParam)->code == LVN_ITEMCHANGED) UpdateActionButton();
+            if (reinterpret_cast<NMHDR*>(lParam)->hwndFrom == g_list) {
+                if (reinterpret_cast<NMHDR*>(lParam)->code == LVN_ITEMCHANGED) UpdateActionButton();
+                if (reinterpret_cast<NMHDR*>(lParam)->code == NM_CUSTOMDRAW)
+                    return DrawBugList(reinterpret_cast<NMLVCUSTOMDRAW*>(lParam));
+            }
             return 0;
         case WM_DESTROY:
             DeleteObject(g_uiFont);
             DeleteObject(g_titleFont);
+            DeleteObject(g_sectionFont);
+            DeleteObject(g_backgroundBrush);
+            DeleteObject(g_headerBrush);
+            DeleteObject(g_panelBrush);
             PostQuitMessage(0);
             return 0;
     }

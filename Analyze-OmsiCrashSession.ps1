@@ -317,8 +317,13 @@ function Analyze-Logfile {
         ErrorTexts = New-Counter
         SystemErrorContexts = New-Counter
         TextureFailures = New-Counter
+        Direct9TextureErrors = New-Counter
         TimeFirst = ''
         TimeLast = ''
+        TextureFailureFirst = ''
+        TextureFailureLast = ''
+        Direct9TextureErrorFirst = ''
+        Direct9TextureErrorLast = ''
     }
 
     if (-not $result.Exists) {
@@ -329,11 +334,13 @@ function Analyze-Logfile {
     foreach ($line in Get-Content -LiteralPath $Path) {
         $result.LineCount += 1
 
+        $lineTime = ''
         if ($line -match '^\s*\d+\s+(?<time>\d\d:\d\d:\d\d)\s+-') {
+            $lineTime = $Matches.time
             if (-not $result.TimeFirst) {
-                $result.TimeFirst = $Matches.time
+                $result.TimeFirst = $lineTime
             }
-            $result.TimeLast = $Matches.time
+            $result.TimeLast = $lineTime
         }
 
         if ($line -match '(?i)\b(Error|Warning|Fatal Error|Direct9 Error)\b') {
@@ -378,6 +385,22 @@ function Analyze-Logfile {
 
         if ($line -match 'Texture\s+"(?<path>[^"]+)"\s+failed!') {
             Add-Count $result.TextureFailures $Matches.path
+            if ($lineTime) {
+                if (-not $result.TextureFailureFirst) {
+                    $result.TextureFailureFirst = $lineTime
+                }
+                $result.TextureFailureLast = $lineTime
+            }
+        }
+
+        if ($line -match '(?i)Texturladen - Direct9 Error:\s*(?<error>[A-Z0-9_]+|0x[0-9A-Fa-f]+|Unknown)') {
+            Add-Count $result.Direct9TextureErrors $Matches.error
+            if ($lineTime) {
+                if (-not $result.Direct9TextureErrorFirst) {
+                    $result.Direct9TextureErrorFirst = $lineTime
+                }
+                $result.Direct9TextureErrorLast = $lineTime
+            }
         }
     }
 
@@ -649,6 +672,28 @@ else {
     Add-MarkdownTable $lines @('Context', 'Count') (New-CountRows $logSummary.SystemErrorContexts 'Context' $Top)
 
     $lines.Add('### Texture failures')
+    $lines.Add('')
+    $textureTimingRows = @(
+        [pscustomobject]@{
+            Signal = 'Texture failed'
+            First = $logSummary.TextureFailureFirst
+            Last = $logSummary.TextureFailureLast
+            Count = ($logSummary.TextureFailures.Values | Measure-Object -Sum).Sum
+        },
+        [pscustomobject]@{
+            Signal = 'Texturladen Direct9 Error'
+            First = $logSummary.Direct9TextureErrorFirst
+            Last = $logSummary.Direct9TextureErrorLast
+            Count = ($logSummary.Direct9TextureErrors.Values | Measure-Object -Sum).Sum
+        }
+    ) | Where-Object { $_.Count -gt 0 }
+    Add-MarkdownTable $lines @('Signal', 'First', 'Last', 'Count') $textureTimingRows
+
+    $lines.Add('### Direct9 texture error codes')
+    $lines.Add('')
+    Add-MarkdownTable $lines @('Error', 'Count') (New-CountRows $logSummary.Direct9TextureErrors 'Error' $Top)
+
+    $lines.Add('### Texture failure paths')
     $lines.Add('')
     Add-MarkdownTable $lines @('Texture', 'Count') (New-CountRows $logSummary.TextureFailures 'Texture' $Top)
 }

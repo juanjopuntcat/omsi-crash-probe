@@ -123,9 +123,8 @@ OmsiCrashProbe.opl
 ```
 
 Tags named `v*`, for example `v0.1.0`, also run the release-package workflow.
-That workflow builds the same Win32 plugin zip as a GitHub Actions artifact,
-ready to attach to a GitHub Release. The repository does not create releases
-automatically; that keeps repository-write automation explicit.
+That workflow builds the same Win32 plugin zip, uploads it as a GitHub Actions
+artifact, and creates a GitHub Release with the zip attached.
 
 ## Install
 

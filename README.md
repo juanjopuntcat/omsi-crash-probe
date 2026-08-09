@@ -1,7 +1,7 @@
 # OmsiCrashProbe
 
 `OmsiCrashProbe` is a minimal OMSI 2 diagnostic plugin for engine-side crash
-attribution. It does not patch OMSI and does not try to handle exceptions. It
+attribution. The probe DLL does not patch OMSI or try to handle exceptions. It
 only installs a vectored exception handler, logs interesting first-chance
 exceptions, then returns `EXCEPTION_CONTINUE_SEARCH` so OMSI and Windows keep
 their normal behavior.
@@ -263,9 +263,11 @@ OmsiCrashProbe.dll
 
 ## Safety
 
-- No binary patching.
+- The loaded probe DLL performs no binary patching.
+- The separate patch transport defaults to audit mode and currently has no
+  approved patches.
 - No exception suppression.
-- No file writes outside `<OMSI root>\OmsiCrashProbe\probe.log`.
+- The probe DLL writes only `<OMSI root>\OmsiCrashProbe\probe.log`.
 - Version-independent, because it only observes process exceptions.
 - Uses a fixed-size in-process signature table for deduplication, with no heap
   allocation in the exception path.
@@ -297,6 +299,14 @@ OmsiCrashProbe.dll
   decoded fields when the guessed layout is not valid.
 - Known-RVA classification is static text based on local Ghidra analysis; it
   does not hook or alter OMSI code.
+
+## Guarded patching groundwork
+
+`Patch-OmsiRuntime.ps1` and the intentionally empty `patch-manifest.json` form
+the transport for future verified fixes; they are not currently an OMSI patch.
+Audit is the default mode. Applying a future entry requires an approved SHA-256,
+matching PE identity, exact file offset, and exact original bytes. See
+`patching-design.md` and `ghidra-public-access-violation-notes.md`.
 
 Use this alongside Windows Error Reporting dumps for fatal crashes. The probe is
 especially useful for Delphi/logged exceptions that do not terminate the process.

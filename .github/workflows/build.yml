@@ -25,6 +25,10 @@ jobs:
         shell: powershell
         run: .\Test-AnalyzeOmsiCrashSession.ps1
 
+      - name: Test guarded patch transport
+        shell: powershell
+        run: .\Test-PatchOmsiRuntime.ps1
+
       - name: Test probe handler core
         shell: cmd
         run: Test-OmsiCrashProbeCore.bat

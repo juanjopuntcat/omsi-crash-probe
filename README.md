@@ -354,6 +354,15 @@ view enables a second filter for any patch state, not applied, or applied;
 "not applied" includes compatible and incompatible fixes that are absent from
 the selected installation.
 
+Additional table filters narrow the catalog by category and confidence. A
+case-insensitive search field matches bug names and descriptions, and all
+filters compose with sorting and the manifest/installation-state filters.
+
+The header includes an About dialog and a GitHub contribution link. `Back up
+Omsi.exe` validates the selected PE32 executable and creates a non-overwriting,
+timestamped copy under `<OMSI>\OmsiCrashProbe\backups`. This manual snapshot is
+separate from the patch-specific backups created transactionally by Apply.
+
 The shared native core provides tested audit, apply, backup, atomic replace,
 and rollback primitives. The GUI obtains every offset and byte sequence from
 the validated manifest; it never duplicates patch data in UI code.

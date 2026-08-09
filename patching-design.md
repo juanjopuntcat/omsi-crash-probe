@@ -47,6 +47,11 @@ the approved original immediately before Apply or Rollback, shows the target and
 backup in an explicit confirmation, and refuses mutation while `Omsi.exe` is
 running. UI code never constructs patch offsets or replacement bytes itself.
 
+The GUI's manual `Omsi.exe` backup is an independent user snapshot. It uses a
+timestamped, non-overwriting destination and is never accepted automatically as
+a patch rollback source; rollback continues to require the exact patch-specific
+backup validated by `PatchCore`.
+
 Original game binaries, wholesale decompiler output, and copyrighted game data
 must never be committed. Releases may contain our probe, scripts, manifests, and
 documentation, but not original or modified OMSI executables or DLLs.

@@ -70,6 +70,17 @@ The approved-fix view enables a subordinate installation-state filter for any,
 not applied, or applied patches. The subordinate filter is disabled and reset
 outside that view so its scope remains unambiguous.
 
+Category and confidence selectors and a case-insensitive name/description
+search compose with both fix filters. The layout expands the finding column at
+larger window sizes and forces a full child repaint after resize/maximize to
+avoid stale native-control backgrounds.
+
+Header actions expose project information and the public GitHub repository.
+The installation row also offers a manual, timestamped `Omsi.exe` backup under
+the selected installation's `OmsiCrashProbe\backups` directory. Manual backups
+never overwrite an existing file and do not replace patch-specific rollback
+backups.
+
 ## Delivery stages
 
 1. Extract PE identity and patch operations into a reusable C++ core with JSON

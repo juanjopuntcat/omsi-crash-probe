@@ -13,11 +13,14 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <tlhelp32.h>
 
 #include <algorithm>
 #include <array>
+#include <cwctype>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -36,7 +39,13 @@ enum ControlId {
     IdBugList,
     IdApply,
     IdFilter,
-    IdPatchStateFilter
+    IdPatchStateFilter,
+    IdSearch,
+    IdCategoryFilter,
+    IdConfidenceFilter,
+    IdAbout,
+    IdBackup,
+    IdGithub
 };
 
 enum DialogButtonId {
@@ -94,6 +103,12 @@ HWND g_pathLabel = nullptr;
 HWND g_bugsLabel = nullptr;
 HWND g_filter = nullptr;
 HWND g_patchStateFilter = nullptr;
+HWND g_search = nullptr;
+HWND g_categoryFilter = nullptr;
+HWND g_confidenceFilter = nullptr;
+HWND g_about = nullptr;
+HWND g_backup = nullptr;
+HWND g_github = nullptr;
 HFONT g_uiFont = nullptr;
 HFONT g_titleFont = nullptr;
 HFONT g_sectionFont = nullptr;
@@ -278,18 +293,50 @@ void UpdateFilterControls() {
     if (!withFix) SendMessageW(g_patchStateFilter, CB_SETCURSEL, 0, 0);
 }
 
+std::wstring ControlText(HWND control) {
+    const int length = GetWindowTextLengthW(control);
+    std::wstring text(static_cast<size_t>(length + 1), L'\0');
+    GetWindowTextW(control, text.data(), length + 1);
+    text.resize(static_cast<size_t>(length));
+    return text;
+}
+
+bool ContainsCaseInsensitive(const wchar_t* value, const std::wstring& query) {
+    if (query.empty()) return true;
+    const std::wstring text(value);
+    return std::search(text.begin(), text.end(), query.begin(), query.end(),
+        [](wchar_t left, wchar_t right) { return std::towlower(left) == std::towlower(right); }) != text.end();
+}
+
+std::wstring ComboSelectionText(HWND combo) {
+    const int selection = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));
+    if (selection == CB_ERR) return {};
+    const int length = static_cast<int>(SendMessageW(combo, CB_GETLBTEXTLEN, selection, 0));
+    std::wstring text(static_cast<size_t>(length + 1), L'\0');
+    SendMessageW(combo, CB_GETLBTEXT, selection, reinterpret_cast<LPARAM>(text.data()));
+    text.resize(static_cast<size_t>(length));
+    return text;
+}
+
 void PopulateBugs() {
     size_t selectedBug = kBugs.size();
     BugIndexFromRow(ListView_GetNextItem(g_list, -1, LVNI_SELECTED), &selectedBug);
     const int filter = g_filter == nullptr ? 0 : static_cast<int>(SendMessageW(g_filter, CB_GETCURSEL, 0, 0));
     const int patchStateFilter = g_patchStateFilter == nullptr ? 0 :
         static_cast<int>(SendMessageW(g_patchStateFilter, CB_GETCURSEL, 0, 0));
+    const std::wstring query = g_search == nullptr ? std::wstring() : ControlText(g_search);
+    const std::wstring category = g_categoryFilter == nullptr ? std::wstring() : ComboSelectionText(g_categoryFilter);
+    const std::wstring confidence = g_confidenceFilter == nullptr ? std::wstring() : ComboSelectionText(g_confidenceFilter);
     std::vector<size_t> visible;
     for (size_t index = 0; index < kBugs.size(); ++index) {
         const bool hasFix = g_bugPatchIndex[index] >= 0;
         if ((filter == 1 && !hasFix) || (filter == 2 && hasFix)) continue;
         if (filter == 1 && patchStateFilter == 1 && g_fixStates[index] == FixState::Applied) continue;
         if (filter == 1 && patchStateFilter == 2 && g_fixStates[index] != FixState::Applied) continue;
+        if (!category.empty() && category != L"All categories" && category != kBugs[index].category) continue;
+        if (!confidence.empty() && confidence != L"All confidence" && confidence != kBugs[index].confidence) continue;
+        if (!ContainsCaseInsensitive(kBugs[index].title, query) &&
+            !ContainsCaseInsensitive(kBugs[index].description, query)) continue;
         visible.push_back(index);
     }
     std::stable_sort(visible.begin(), visible.end(), [](size_t left, size_t right) {
@@ -583,6 +630,61 @@ void ShowSelectedBugDialog(HWND window) {
     }
 }
 
+void ShowAboutDialog(HWND window) {
+    TASKDIALOGCONFIG dialog = {sizeof(dialog)};
+    dialog.hwndParent = window;
+    dialog.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+    dialog.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+    dialog.pszWindowTitle = L"About OMSI Crash Probe";
+    dialog.pszMainIcon = TD_INFORMATION_ICON;
+    dialog.pszMainInstruction = L"OMSI Crash Probe 0.1.0";
+    dialog.pszContent =
+        L"A native x86 diagnostic and guarded patch manager for OMSI 2.\n\n"
+        L"The application documents known engine failures, audits exact binary identities, "
+        L"and applies only approved reversible fixes with verified backups. It does not include "
+        L"or redistribute OMSI game files.\n\n"
+        L"Author: Juanjo Rubio\nLicense: MIT\nIndependent project; not affiliated with the OMSI 2 rights holders.";
+    TaskDialogIndirect(&dialog, nullptr, nullptr, nullptr);
+}
+
+void OpenGithub(HWND window) {
+    const HINSTANCE result = ShellExecuteW(window, L"open",
+        L"https://github.com/juanjopuntcat/omsi-crash-probe", nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(result) <= 32) {
+        MessageBoxW(window, L"Windows could not open the project page.", L"GitHub", MB_OK | MB_ICONERROR);
+    }
+}
+
+void BackupSelectedExecutable(HWND window) {
+    const std::wstring source = SelectedPath();
+    omsi_patch::PeImage image;
+    std::string error;
+    if (!omsi_patch::LoadPeImage(source, &image, &error)) {
+        MessageBoxW(window, Wide(error).c_str(), L"Backup failed", MB_OK | MB_ICONERROR);
+        return;
+    }
+    const std::filesystem::path backupDirectory = std::filesystem::path(source).parent_path() /
+        L"OmsiCrashProbe" / L"backups";
+    const int createResult = SHCreateDirectoryExW(window, backupDirectory.c_str(), nullptr);
+    if (createResult != ERROR_SUCCESS && createResult != ERROR_ALREADY_EXISTS && createResult != ERROR_FILE_EXISTS) {
+        MessageBoxW(window, L"Could not create the backup directory.", L"Backup failed", MB_OK | MB_ICONERROR);
+        return;
+    }
+    SYSTEMTIME time = {};
+    GetLocalTime(&time);
+    wchar_t name[96] = {};
+    swprintf_s(name, L"Omsi-%04u%02u%02u-%02u%02u%02u.exe", time.wYear, time.wMonth,
+        time.wDay, time.wHour, time.wMinute, time.wSecond);
+    const std::filesystem::path destination = backupDirectory / name;
+    if (!CopyFileW(source.c_str(), destination.c_str(), TRUE)) {
+        MessageBoxW(window, L"Could not create a non-overwriting executable backup.",
+            L"Backup failed", MB_OK | MB_ICONERROR);
+        return;
+    }
+    const std::wstring message = L"Backup created successfully:\n\n" + destination.wstring();
+    MessageBoxW(window, message.c_str(), L"Backup complete", MB_OK | MB_ICONINFORMATION);
+}
+
 void BrowseForOmsi(HWND window) {
     wchar_t path[MAX_PATH] = L"Omsi.exe";
     OPENFILENAMEW dialog = {sizeof(dialog)};
@@ -604,19 +706,38 @@ void Layout(HWND window) {
     const int width = client.right;
     const int height = client.bottom;
     MoveWindow(g_title, 28, 14, 420, 32, TRUE);
-    MoveWindow(g_subtitle, 29, 45, width - 58, 20, TRUE);
+    MoveWindow(g_subtitle, 29, 45, (std::max)(300, width - 360), 20, TRUE);
+    MoveWindow(g_about, width - 246, 20, 100, 30, TRUE);
+    MoveWindow(g_github, width - 136, 20, 108, 30, TRUE);
     MoveWindow(g_pathLabel, 28, 92, 180, 20, TRUE);
-    MoveWindow(g_path, 28, 116, (std::max)(260, width - 326), 32, TRUE);
-    MoveWindow(g_browse, width - 290, 116, 118, 32, TRUE);
-    MoveWindow(g_inspect, width - 160, 114, 132, 36, TRUE);
+    MoveWindow(g_path, 28, 116, (std::max)(260, width - 474), 34, TRUE);
+    MoveWindow(g_browse, width - 434, 116, 116, 34, TRUE);
+    MoveWindow(g_inspect, width - 306, 116, 116, 34, TRUE);
+    MoveWindow(g_backup, width - 178, 116, 150, 34, TRUE);
     MoveWindow(g_identity, 40, 169, width - 80, 24, TRUE);
     MoveWindow(g_compatibility, 40, 197, width - 80, 24, TRUE);
     MoveWindow(g_bugsLabel, 28, 242, 300, 28, TRUE);
-    MoveWindow(g_filter, width - 466, 238, 230, 220, TRUE);
-    MoveWindow(g_patchStateFilter, width - 224, 238, 196, 220, TRUE);
-    MoveWindow(g_list, 28, 276, width - 56, (std::max)(160, height - 358), TRUE);
+    const int gap = 10;
+    const int categoryWidth = 150;
+    const int confidenceWidth = 132;
+    const int fixWidth = 202;
+    const int patchStateWidth = 170;
+    const int searchWidth = (std::max)(220,
+        width - 56 - categoryWidth - confidenceWidth - fixWidth - patchStateWidth - gap * 4);
+    int filterX = 28;
+    MoveWindow(g_search, filterX, 274, searchWidth, 30, TRUE);
+    filterX += searchWidth + gap;
+    MoveWindow(g_categoryFilter, filterX, 274, categoryWidth, 220, TRUE);
+    filterX += categoryWidth + gap;
+    MoveWindow(g_confidenceFilter, filterX, 274, confidenceWidth, 220, TRUE);
+    filterX += confidenceWidth + gap;
+    MoveWindow(g_filter, filterX, 274, fixWidth, 220, TRUE);
+    filterX += fixWidth + gap;
+    MoveWindow(g_patchStateFilter, filterX, 274, patchStateWidth, 220, TRUE);
+    MoveWindow(g_list, 28, 314, width - 56, (std::max)(160, height - 396), TRUE);
+    ListView_SetColumnWidth(g_list, 5, (std::max)(350, width - 56 - 730 - 24));
     MoveWindow(g_fixSummary, 34, height - 61, width - 250, 30, TRUE);
-    MoveWindow(g_apply, width - 210, height - 68, 182, 40, TRUE);
+    MoveWindow(g_apply, width - 220, height - 68, 180, 40, TRUE);
 }
 
 LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -634,16 +755,37 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             g_title = AddControl(window, L"STATIC", L"OMSI Crash Probe", SS_LEFT);
             SetFont(g_title, g_titleFont);
             g_subtitle = AddControl(window, L"STATIC", L"Diagnostics and guarded patch manager", SS_LEFT);
+            g_about = AddControl(window, L"BUTTON", L"About", WS_TABSTOP | BS_PUSHBUTTON, IdAbout);
+            g_github = AddControl(window, L"BUTTON", L"GitHub", WS_TABSTOP | BS_PUSHBUTTON, IdGithub);
             g_pathLabel = AddControl(window, L"STATIC", L"OMSI installation", SS_LEFT);
             SetFont(g_pathLabel, g_sectionFont);
             g_path = AddControl(window, L"EDIT", L"",
                 WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, IdPath);
             g_browse = AddControl(window, L"BUTTON", L"Browse...", WS_TABSTOP | BS_PUSHBUTTON, IdBrowse);
             g_inspect = AddControl(window, L"BUTTON", L"Inspect", WS_TABSTOP | BS_OWNERDRAW, IdInspect);
+            g_backup = AddControl(window, L"BUTTON", L"Back up Omsi.exe", WS_TABSTOP | BS_PUSHBUTTON, IdBackup);
             g_identity = AddControl(window, L"STATIC", L"Executable: not inspected", SS_LEFT);
             g_compatibility = AddControl(window, L"STATIC", L"Compatibility: unknown", SS_LEFT);
             g_bugsLabel = AddControl(window, L"STATIC", L"Documented bugs", SS_LEFT);
             SetFont(g_bugsLabel, g_sectionFont);
+            g_search = AddControl(window, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, IdSearch);
+            SendMessageW(g_search, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Search name or description"));
+            g_categoryFilter = AddControl(window, WC_COMBOBOXW, L"",
+                WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, IdCategoryFilter);
+            SendMessageW(g_categoryFilter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"All categories"));
+            std::set<std::wstring> categories;
+            for (const BugEntry& bug : kBugs) categories.insert(bug.category);
+            for (const std::wstring& category : categories)
+                SendMessageW(g_categoryFilter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(category.c_str()));
+            SendMessageW(g_categoryFilter, CB_SETCURSEL, 0, 0);
+            g_confidenceFilter = AddControl(window, WC_COMBOBOXW, L"",
+                WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, IdConfidenceFilter);
+            const wchar_t* confidenceValues[] = {
+                L"All confidence", L"High", L"Medium-high", L"Medium", L"Medium-low"
+            };
+            for (const wchar_t* confidence : confidenceValues)
+                SendMessageW(g_confidenceFilter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(confidence));
+            SendMessageW(g_confidenceFilter, CB_SETCURSEL, 0, 0);
             g_filter = AddControl(window, WC_COMBOBOXW, L"",
                 WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, IdFilter);
             SendMessageW(g_filter, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"All documented bugs"));
@@ -688,10 +830,12 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         }
         case WM_SIZE:
             Layout(window);
+            RedrawWindow(window, nullptr, nullptr,
+                RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_FRAME);
             return 0;
         case WM_GETMINMAXINFO: {
             auto* limits = reinterpret_cast<MINMAXINFO*>(lParam);
-            limits->ptMinTrackSize.x = 900;
+            limits->ptMinTrackSize.x = 1050;
             limits->ptMinTrackSize.y = 640;
             return 0;
         }
@@ -749,12 +893,18 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         case WM_COMMAND:
             if (LOWORD(wParam) == IdBrowse) BrowseForOmsi(window);
             if (LOWORD(wParam) == IdInspect) InspectSelectedFile(window);
+            if (LOWORD(wParam) == IdBackup) BackupSelectedExecutable(window);
+            if (LOWORD(wParam) == IdAbout) ShowAboutDialog(window);
+            if (LOWORD(wParam) == IdGithub) OpenGithub(window);
             if (LOWORD(wParam) == IdApply) ShowSelectedBugDialog(window);
             if (LOWORD(wParam) == IdFilter && HIWORD(wParam) == CBN_SELCHANGE) {
                 UpdateFilterControls();
                 PopulateBugs();
             }
             if (LOWORD(wParam) == IdPatchStateFilter && HIWORD(wParam) == CBN_SELCHANGE) PopulateBugs();
+            if (LOWORD(wParam) == IdCategoryFilter && HIWORD(wParam) == CBN_SELCHANGE) PopulateBugs();
+            if (LOWORD(wParam) == IdConfidenceFilter && HIWORD(wParam) == CBN_SELCHANGE) PopulateBugs();
+            if (LOWORD(wParam) == IdSearch && HIWORD(wParam) == EN_CHANGE) PopulateBugs();
             return 0;
         case WM_NOTIFY:
             if (reinterpret_cast<NMHDR*>(lParam)->hwndFrom == g_list) {

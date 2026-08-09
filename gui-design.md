@@ -58,5 +58,6 @@ manifest are embedded resources in `OmsiCrashProbe.exe`.
    native core has parity tests against the PowerShell transport.
 
 Stage 1 is complete, including native transactional apply and rollback tests.
-The GUI remains read-only until a native manifest reader and the first approved
-patch are both available.
+The native manifest reader is also complete. The GUI loads the manifest beside
+the executable and shows its approved-fix count. It remains read-only until the
+first approved patch is available and can be bound to a selectable bug row.

@@ -338,6 +338,16 @@ The shared native core already has tested audit, apply, backup, atomic replace,
 and rollback primitives. The GUI does not expose them until a native manifest
 reader can supply approved patch data without duplicating offsets in UI code.
 
+The native manifest reader now validates schema version 1 with
+`nlohmann/json` 3.12.0, rejects unknown keys and unsafe relative paths, parses
+bounded hexadecimal values and byte sequences, rejects duplicate IDs, and
+selects a patch only when SHA-256, PE timestamp, and image size all match. The
+GUI loads `patch-manifest.json` beside its executable and reports its approved
+fix count, but Apply remains disabled while the manifest is empty.
+
+Third-party notices and licenses are documented in `THIRD_PARTY_NOTICES.md` and
+packaged with release artifacts.
+
 The executable embeds its DPI/Common Controls manifest and Windows version
 resource, including product name, description, author, copyright, file/product
 version, original filename, and MIT license note. It is a native x86 Windows

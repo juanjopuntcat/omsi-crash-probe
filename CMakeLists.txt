@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.16)
 # generation or CI builds.
 project(OmsiCrashProbe LANGUAGES CXX RC)
 
-add_library(OmsiPatchCore STATIC PatchCore.cpp)
+add_library(OmsiPatchCore STATIC PatchCore.cpp PatchManifest.cpp)
 target_include_directories(OmsiPatchCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(OmsiPatchCore PUBLIC cxx_std_17)
 target_compile_definitions(OmsiPatchCore PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)

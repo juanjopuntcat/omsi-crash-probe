@@ -13,6 +13,6 @@ if errorlevel 1 (
 
 rc.exe /nologo /fo OmsiCrashProbeGui.res OmsiCrashProbeGui.rc
 if errorlevel 1 exit /b 1
-cl.exe /nologo /W4 /EHsc /std:c++17 /MT OmsiCrashProbeGui.cpp PatchCore.cpp OmsiCrashProbeGui.res /Fe:OmsiCrashProbe.exe /link /SUBSYSTEM:WINDOWS bcrypt.lib comctl32.lib comdlg32.lib shell32.lib user32.lib gdi32.lib
+cl.exe /nologo /W4 /EHsc /std:c++17 /MT OmsiCrashProbeGui.cpp PatchCore.cpp PatchManifest.cpp OmsiCrashProbeGui.res /Fe:OmsiCrashProbe.exe /link /SUBSYSTEM:WINDOWS bcrypt.lib comctl32.lib comdlg32.lib shell32.lib user32.lib gdi32.lib
 if errorlevel 1 exit /b 1
 echo Built OmsiCrashProbe.exe

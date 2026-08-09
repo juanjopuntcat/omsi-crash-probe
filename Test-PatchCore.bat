@@ -3,9 +3,11 @@ setlocal
 
 rem Compile and run the native PE/patch-core tests without repo build products.
 set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
-set "TEST_EXE=%TEMP%\OmsiPatchCoreTests.exe"
-set "TEST_OBJ=%TEMP%\OmsiPatchCoreTests.obj"
-set "CORE_OBJ=%TEMP%\OmsiPatchCore.obj"
+set "TEST_SUFFIX=%RANDOM%-%RANDOM%"
+set "TEST_DIR=%TEMP%\OmsiPatchCoreTests-%TEST_SUFFIX%"
+set "TEST_EXE=%TEST_DIR%\OmsiPatchCoreTests.exe"
+mkdir "%TEST_DIR%" >nul 2>nul
+if errorlevel 1 exit /b 1
 
 where cl.exe >nul 2>nul
 if errorlevel 1 (
@@ -14,7 +16,7 @@ if errorlevel 1 (
   if errorlevel 1 exit /b 1
 )
 
-cl.exe /nologo /W4 /EHsc /std:c++17 /MT Test-PatchCore.cpp PatchCore.cpp /Fo"%TEMP%\\" /Fe"%TEST_EXE%" bcrypt.lib
+cl.exe /nologo /W4 /EHsc /std:c++17 /MT Test-PatchCore.cpp PatchCore.cpp PatchManifest.cpp /Fo"%TEST_DIR%\\" /Fd"%TEST_DIR%\vc.pdb" /Fe"%TEST_EXE%" bcrypt.lib
 if errorlevel 1 exit /b 1
 if not exist "%TEST_EXE%" (
   echo Native patch core test executable was not produced.
@@ -22,8 +24,8 @@ if not exist "%TEST_EXE%" (
 )
 
 echo Running native patch core tests...
-call "%TEST_EXE%"
+"%TEST_EXE%"
 set "TEST_RESULT=%ERRORLEVEL%"
 echo Native patch core test exit code: %TEST_RESULT%
-del /q "%TEST_EXE%" "%TEST_OBJ%" "%CORE_OBJ%" >nul 2>nul
+rmdir /s /q "%TEST_DIR%" >nul 2>nul
 exit /b %TEST_RESULT%

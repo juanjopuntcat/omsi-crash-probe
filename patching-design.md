@@ -35,9 +35,16 @@ atomically replaces the target. Rollback accepts only a backup that still
 matches the approved original. Offline tests exercise the full transaction and
 reject repeat application, unsafe IDs, and unexpected bytes.
 
-These mutation primitives are not exposed by the CLI or GUI yet. The next gate
-is a strictly validated native manifest reader; UI code must never construct
-patch offsets or replacement bytes itself.
+The native manifest reader uses vendored `nlohmann/json` 3.12.0 and accepts only
+schema version 1. It rejects unknown keys, duplicate IDs, absolute/traversing
+targets, malformed hashes, unbounded hexadecimal values, malformed byte
+sequences, irreversible entries, and replacement-length changes. Compatibility
+requires SHA-256, PE timestamp, and image size to agree.
+
+Mutation primitives are not exposed by the CLI or GUI yet. UI code must never
+construct patch offsets or replacement bytes itself; the next gate is binding
+validated manifest entries to selectable bug rows and an explicit confirmation
+dialog.
 
 Original game binaries, wholesale decompiler output, and copyrighted game data
 must never be committed. Releases may contain our probe, scripts, manifests, and

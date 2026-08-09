@@ -12,6 +12,6 @@ if errorlevel 1 (
   if errorlevel 1 exit /b 1
 )
 
-cl.exe /nologo /W4 /EHsc /std:c++17 /MT OmsiPatchTool.cpp PatchCore.cpp /Fe:OmsiPatchTool.exe bcrypt.lib shell32.lib
+cl.exe /nologo /W4 /EHsc /std:c++17 /MT OmsiPatchTool.cpp PatchCore.cpp PatchManifest.cpp /Fe:OmsiPatchTool.exe bcrypt.lib shell32.lib
 if errorlevel 1 exit /b 1
 echo Built OmsiPatchTool.exe

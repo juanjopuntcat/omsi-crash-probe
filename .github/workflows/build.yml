@@ -67,7 +67,11 @@ jobs:
           Copy-Item -LiteralPath OmsiCrashProbe.opl -Destination dist/OmsiCrashProbe.opl
           Copy-Item -LiteralPath build-x86/Release/OmsiCrashProbe.exe -Destination dist/OmsiCrashProbe.exe
           Copy-Item -LiteralPath build-x86/Release/OmsiPatchTool.exe -Destination dist/OmsiPatchTool.exe
-          Compress-Archive -LiteralPath dist/OmsiCrashProbe.dll,dist/OmsiCrashProbe.opl,dist/OmsiCrashProbe.exe,dist/OmsiPatchTool.exe -DestinationPath OmsiCrashProbe-win32.zip -Force
+          Copy-Item -LiteralPath patch-manifest.json -Destination dist/patch-manifest.json
+          Copy-Item -LiteralPath LICENSE -Destination dist/LICENSE
+          Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination dist/THIRD_PARTY_NOTICES.md
+          Copy-Item -LiteralPath third_party/nlohmann/LICENSE.MIT -Destination dist/nlohmann-json-LICENSE.MIT
+          Compress-Archive -Path dist/* -DestinationPath OmsiCrashProbe-win32.zip -Force
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4

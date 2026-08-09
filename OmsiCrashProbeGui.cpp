@@ -1,4 +1,5 @@
 #include "PatchCore.h"
+#include "PatchManifest.h"
 
 #ifndef UNICODE
 #define UNICODE
@@ -73,6 +74,7 @@ HWND g_compatibility = nullptr;
 HWND g_fixSummary = nullptr;
 HFONT g_uiFont = nullptr;
 HFONT g_titleFont = nullptr;
+omsi_patch::PatchManifest g_manifest;
 
 std::wstring Wide(const std::string& text) {
     if (text.empty()) return {};
@@ -134,6 +136,27 @@ std::wstring FindOmsiExecutable() {
         directory = directory.parent_path();
     }
     return {};
+}
+
+std::wstring FileBesideExecutable(const wchar_t* name) {
+    wchar_t modulePath[MAX_PATH] = {};
+    if (GetModuleFileNameW(nullptr, modulePath, MAX_PATH) == 0) return {};
+    return (std::filesystem::path(modulePath).parent_path() / name).wstring();
+}
+
+void LoadManifestStatus() {
+    std::string error;
+    const std::wstring path = FileBesideExecutable(L"patch-manifest.json");
+    if (path.empty() || !omsi_patch::LoadPatchManifest(path, &g_manifest, &error)) {
+        const std::wstring message = L"Patching disabled: " + Wide(error.empty() ? "patch-manifest.json not found" : error);
+        SetWindowTextW(g_fixSummary, message.c_str());
+        EnableWindow(g_apply, FALSE);
+        return;
+    }
+    wchar_t summary[160] = {};
+    swprintf_s(summary, L"%zu approved fixes in manifest", g_manifest.patches.size());
+    SetWindowTextW(g_fixSummary, summary);
+    EnableWindow(g_apply, FALSE);
 }
 
 void InspectSelectedFile(HWND window) {
@@ -229,6 +252,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             g_fixSummary = AddControl(window, L"STATIC", L"0 approved fixes available", SS_LEFT | SS_CENTERIMAGE);
             g_apply = AddControl(window, L"BUTTON", L"Apply selected fixes", WS_TABSTOP | BS_PUSHBUTTON, IdApply);
             EnableWindow(g_apply, FALSE);
+            LoadManifestStatus();
             Layout(window);
             const std::wstring detectedOmsi = FindOmsiExecutable();
             if (!detectedOmsi.empty()) {

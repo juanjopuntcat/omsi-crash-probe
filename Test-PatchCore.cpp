@@ -1,4 +1,5 @@
 #include "PatchCore.h"
+#include "PatchManifest.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -125,6 +126,62 @@ int main() {
     bytes = SyntheticPe();
     Put<uint32_t>(&bytes, 0x178 + 20, 0x580);
     ok &= Check(!omsi_patch::ParsePeImage(bytes, &image, &error), "section beyond file must fail");
+
+    const std::string validManifest = R"json({
+      "schemaVersion": 1,
+      "patches": [{
+        "id": "synthetic-fix",
+        "title": "Synthetic fix",
+        "target": "Omsi.exe",
+        "allowedSha256": [
+          "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        ],
+        "peTimeDateStamp": "0x12345678",
+        "peSizeOfImage": "0x00300000",
+        "rva": "0x00001020",
+        "fileOffset": "0x00000420",
+        "expectedBytes": "AA BB",
+        "replacementBytes": "11 22",
+        "rationale": "Offline test",
+        "reversible": true
+      }]
+    })json";
+    std::fprintf(stderr, "Manifest test: parse valid\n");
+    omsi_patch::PatchManifest manifest;
+    ok &= Check(omsi_patch::ParsePatchManifest(validManifest, &manifest, &error) &&
+        manifest.patches.size() == 1, "strict valid manifest must parse");
+    omsi_patch::PeIdentity compatibleIdentity;
+    compatibleIdentity.sha256 = std::string(64, 'A');
+    compatibleIdentity.timeDateStamp = 0x12345678;
+    compatibleIdentity.sizeOfImage = 0x00300000;
+    omsi_patch::PatchRequest prepared;
+    std::fprintf(stderr, "Manifest test: prepare compatible\n");
+    ok &= Check(omsi_patch::PreparePatchRequest(
+        manifest.patches.front(), compatibleIdentity, &prepared, &error) &&
+        prepared.allowedOriginalSha256 == compatibleIdentity.sha256,
+        "manifest must select the matching allowed hash");
+    compatibleIdentity.sizeOfImage++;
+    std::fprintf(stderr, "Manifest test: reject identity\n");
+    ok &= Check(!omsi_patch::PreparePatchRequest(
+        manifest.patches.front(), compatibleIdentity, &prepared, &error),
+        "incompatible PE identity must not prepare a patch");
+    std::fprintf(stderr, "Manifest test: reject malformed schemas\n");
+    ok &= Check(omsi_patch::ParsePatchManifest(
+        R"json({"schemaVersion":1,"patches":[]})json", &manifest, &error),
+        "empty approved patch manifest must remain valid");
+    ok &= Check(!omsi_patch::ParsePatchManifest(
+        R"json({"schemaVersion":1,"patches":[],"unknown":true})json", &manifest, &error),
+        "unknown root key must fail closed");
+    std::string traversalManifest = validManifest;
+    traversalManifest.replace(traversalManifest.find("Omsi.exe"), 8, "..\\\\Omsi.exe");
+    ok &= Check(!omsi_patch::ParsePatchManifest(traversalManifest, &manifest, &error),
+        "parent traversal target must fail closed");
+    std::string irreversibleManifest = validManifest;
+    irreversibleManifest.replace(irreversibleManifest.find("true"), 4, "false");
+    ok &= Check(!omsi_patch::ParsePatchManifest(irreversibleManifest, &manifest, &error),
+        "irreversible patch must fail closed");
+    std::fprintf(stderr, "Manifest test: complete\n");
 
     if (!ok) return 1;
     std::puts("All native patch core tests passed.");

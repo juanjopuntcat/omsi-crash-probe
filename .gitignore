@@ -1,0 +1,29 @@
+# Build products
+build/
+build-*/
+*.dll
+*.exe
+*.exp
+*.ilk
+*.lib
+*.obj
+*.pdb
+
+# Runtime logs and local session reports
+*.log
+probe*.txt
+last-crash-session-analysis.md
+static-error-summary.md
+
+# Ghidra local project state and generated exports
+ghidra-projects/
+ghidra-decompile-float-clusters/
+*.tsv
+
+# Local/editor noise
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini

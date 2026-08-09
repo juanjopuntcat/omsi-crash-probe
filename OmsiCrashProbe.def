@@ -1,0 +1,9 @@
+LIBRARY "OmsiCrashProbe"
+
+; OMSI looks up undecorated export names such as "PluginStart".
+; On 32-bit Windows, __stdcall functions normally become decorated symbols like
+; _PluginStart@4. These aliases expose the undecorated names OMSI expects while
+; still pointing to the correctly decorated x86 stdcall functions.
+EXPORTS
+    PluginStart=_PluginStart@4
+    PluginFinalize=_PluginFinalize@0

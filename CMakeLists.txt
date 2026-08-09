@@ -5,6 +5,16 @@ cmake_minimum_required(VERSION 3.16)
 # generation or CI builds.
 project(OmsiCrashProbe LANGUAGES CXX)
 
+add_library(OmsiPatchCore STATIC PatchCore.cpp)
+target_include_directories(OmsiPatchCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(OmsiPatchCore PUBLIC cxx_std_17)
+target_compile_definitions(OmsiPatchCore PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(OmsiPatchCore PUBLIC bcrypt)
+
+add_executable(OmsiPatchTool OmsiPatchTool.cpp)
+target_link_libraries(OmsiPatchTool PRIVATE OmsiPatchCore shell32)
+target_compile_features(OmsiPatchTool PRIVATE cxx_std_17)
+
 # Build a Windows DLL from the C++ source and the export-definition file.
 add_library(OmsiCrashProbe SHARED
     OmsiCrashProbe.cpp
@@ -24,4 +34,8 @@ target_compile_features(OmsiCrashProbe PRIVATE cxx_std_17)
 if (MSVC)
     # /W4 gives useful warnings; /EHsc sets normal C++ exception semantics.
     target_compile_options(OmsiCrashProbe PRIVATE /W4 /EHsc)
+    target_compile_options(OmsiPatchCore PRIVATE /W4 /EHsc)
+    target_compile_options(OmsiPatchTool PRIVATE /W4 /EHsc)
+    set_property(TARGET OmsiPatchCore PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    set_property(TARGET OmsiPatchTool PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()

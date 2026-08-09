@@ -1,0 +1,29 @@
+@echo off
+setlocal
+
+rem Compile and run the native PE/patch-core tests without repo build products.
+set "VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
+set "TEST_EXE=%TEMP%\OmsiPatchCoreTests.exe"
+set "TEST_OBJ=%TEMP%\OmsiPatchCoreTests.obj"
+set "CORE_OBJ=%TEMP%\OmsiPatchCore.obj"
+
+where cl.exe >nul 2>nul
+if errorlevel 1 (
+  if not exist "%VCVARS%" exit /b 1
+  call "%VCVARS%" x86
+  if errorlevel 1 exit /b 1
+)
+
+cl.exe /nologo /W4 /EHsc /std:c++17 /MT Test-PatchCore.cpp PatchCore.cpp /Fo"%TEMP%\\" /Fe"%TEST_EXE%" bcrypt.lib
+if errorlevel 1 exit /b 1
+if not exist "%TEST_EXE%" (
+  echo Native patch core test executable was not produced.
+  exit /b 1
+)
+
+echo Running native patch core tests...
+call "%TEST_EXE%"
+set "TEST_RESULT=%ERRORLEVEL%"
+echo Native patch core test exit code: %TEST_RESULT%
+del /q "%TEST_EXE%" "%TEST_OBJ%" "%CORE_OBJ%" >nul 2>nul
+exit /b %TEST_RESULT%

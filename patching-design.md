@@ -23,6 +23,11 @@ Profiles distinguish LAA-modified and unmodified executables even when their PE
 timestamp and image size agree. A known profile is evidence for compatibility,
 not by itself an approved patch.
 
+The native `OmsiPatchTool` currently exposes read-only `inspect` and `rva`
+commands with one JSON object on standard output. This is the initial stable
+boundary for automation and the future GUI. Mutation remains in the guarded
+PowerShell transport until equivalent native transaction tests exist.
+
 Original game binaries, wholesale decompiler output, and copyrighted game data
 must never be committed. Releases may contain our probe, scripts, manifests, and
 documentation, but not original or modified OMSI executables or DLLs.

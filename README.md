@@ -312,6 +312,17 @@ matching PE identity, exact file offset, and exact original bytes. See
 planned native Windows interface is described in `gui-design.md`; it will use
 the same guarded core rather than implementing binary writes in the UI.
 
+`OmsiPatchTool.exe` is the first native consumer of `PatchCore`. Its current
+commands are read-only and emit JSON:
+
+```powershell
+.\OmsiPatchTool.exe inspect "E:\SteamLibrary\steamapps\common\OMSI 2\Omsi.exe"
+.\OmsiPatchTool.exe rva "E:\SteamLibrary\steamapps\common\OMSI 2\Omsi.exe" 0x00428140
+```
+
+Build it with `build-patch-tool.bat`. The executable uses the static MSVC
+runtime so OMSI's adjacent legacy runtime DLLs cannot satisfy its dependencies.
+
 Use this alongside Windows Error Reporting dumps for fatal crashes. The probe is
 especially useful for Delphi/logged exceptions that do not terminate the process.
 

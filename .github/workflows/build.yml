@@ -33,11 +33,23 @@ jobs:
         shell: cmd
         run: Test-OmsiCrashProbeCore.bat
 
+      - name: Test native patch core
+        shell: cmd
+        run: Test-PatchCore.bat
+
       - name: Configure CMake
         run: cmake -S . -B build-x86 -A Win32
 
       - name: Build Release DLL
         run: cmake --build build-x86 --config Release
+
+      - name: Smoke-test native inspection CLI
+        shell: powershell
+        run: |
+          $result = .\build-x86\Release\OmsiPatchTool.exe inspect .\build-x86\Release\OmsiPatchTool.exe | ConvertFrom-Json
+          if (-not $result.ok -or $result.machine -ne '0x014C' -or $result.sha256.Length -ne 64) {
+            throw 'Native inspection CLI returned an invalid identity'
+          }
 
       - name: Package OMSI plugin files
         shell: pwsh

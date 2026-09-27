@@ -17,7 +17,9 @@ No game launch is needed for the current queue.
 - [x] H05 / AI cleanup: identify the global owner and local continuations.
   Map/version field identified; outer lifecycle and recovery remain unresolved.
   H29's P.KNNC.KM context also located; failing allocation still unknown.
-- [ ] H10-H14 / Direct3D: reconstruct lost/reset state and resource lifecycle.
+- [x] H10-H12 and H14 / Direct3D: inspect lost/reset dispatch and resource stages.
+  Forced reset and log-and-continue paths mapped; full resource coverage and
+  recovery invariants remain unresolved. H13 is a separate range-check case.
 - [ ] External modules: consolidate required hashes, load bases and fault contexts.
 
 ## Deferred Questions
@@ -33,6 +35,9 @@ No game launch is needed for the current queue.
 - [ ] H05: prove map-lifetime ordering and outer-stage recovery. Stage 12 is
   after car cleanup, not a demonstrated no-map continuation.
 - [ ] H29: identify the failing allocation within the located cleanup context.
+- [ ] H10-H12/H14: prove release/recreation coverage, presentation parameters,
+  forced-reset invocation states, device thread and reentrancy. Determine safe
+  recovery after partial failure; obtain the original numeric HRESULT for H11.
 
 ## Integration
 
@@ -69,6 +74,16 @@ No game launch is needed for the current queue.
   decompilations and four explicit missing-function records.
 - [x] Compile GUI and probe without warnings; validate the unchanged empty
   patch manifest. No game runtime tests or installed-probe replacement.
+- [x] Review the diff for publication.
+
+### Direct3D Iteration
+
+- [x] Record state dispatch, forced-reset input and local exception continuations
+  in `ghidra-d3d-review-notes.md`; update the GUI catalog and exception audit.
+- [x] Reproduce focused Ghidra and hash-checked linear exports: seven successful
+  decompilations and six explicit missing-function records.
+- [x] Compile the updated x86 GUI without warnings; validate the unchanged empty
+  patch manifest and all 42 deferred catalog entries. No game runtime tests.
 - [x] Review the diff for publication.
 
 Any unresolved doubt keeps the affected case deferred. Move to the next case

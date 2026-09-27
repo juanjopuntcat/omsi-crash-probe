@@ -172,7 +172,9 @@ Reported:
 
 > Fatal Error occoured! OMSI will be closed. Direct-3D-Device-Reset schlug fehl, Fehler: D3DERR_DEVICELOST
 
-Evidence: Prior analysis maps the reset call/result branch near RVA 0x0042A386.
+Evidence: Reset is confirmed at RVA 0x0042A386. Unforced DEVICELOST bypasses
+this call; the reset_graphic_device flag overrides state dispatch. See
+`ghidra-d3d-review-notes.md` for the release, result and restoration branches.
 
 Unresolved: The device state, reset preconditions, resource ownership and correct retry policy are unproven.
 
@@ -184,7 +186,9 @@ Reported:
 
 > Fatal Error occoured! OMSI will be closed. Direct-3D-Device-Reset schlug fehl, Fehler: Unknown
 
-Evidence: The reset error formatter is mapped, but this report only contains Unknown.
+Evidence: The Reset failure branch passes its result to dxerr9!DXGetErrorString9A
+through thunk RVA 0x00162A84, then exits through local routine cleanup.
+The report only contains Unknown; see `ghidra-d3d-review-notes.md`.
 
 Unresolved: The original numeric HRESULT is missing; it cannot be assumed to equal DEVICELOST or INVALIDCALL.
 
@@ -196,7 +200,10 @@ Reported:
 
 > Fatal Error occoured! OMSI will be closed. Direct-3D-Device-Reset schlug fehl, Fehler: D3DERR_INVALIDCALL
 
-Evidence: The mapped reset-result branch formats this reported HRESULT.
+Evidence: The mapped Reset-result branch formats this reported HRESULT.
+Release and restoration stages have local handlers that can log and continue;
+see `ghidra-d3d-review-notes.md`. Complete resource-release coverage, parameter
+validity, device-creation thread identity and reentrancy are not yet established.
 
 Unresolved: The violated reset precondition is unknown; retained resources and invalid parameters have not been distinguished.
 
@@ -220,9 +227,12 @@ Reported:
 
 > Direct3D-Device lost!
 
-Evidence: RVA 0x00429FD8 is a logging/dispatch path for the device-lost message.
+Evidence: RVA 0x00429FD8 logs entry to DEVICENOTRESET recovery, also reachable
+through the reset_graphic_device request. Unforced DEVICELOST takes a separate
+branch without Reset. See `ghidra-d3d-review-notes.md`.
 
-Unresolved: The notification alone does not establish a fatal error or a defective recovery branch.
+Unresolved: The notification alone proves neither an actual device-loss result
+nor a fatal error or a defective recovery branch.
 
 Decision: **Deferred; no approved fix.**
 

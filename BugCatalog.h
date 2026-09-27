@@ -47,19 +47,19 @@ inline constexpr std::array<BugEntry, 42> kBugs = {{
         L"The supplied text has no module, numeric error code or stack; the focused string pass found no match. Unresolved: Resource contention, an API failure and its owner cannot be distinguished from this text.", nullptr},
     // H10: see documented-exception-audit.md.
     {0x0042A386, L"Reset failed: D3DERR_DEVICELOST", L"Direct3D", L"Deferred", L"High", L"0x0042A386",
-        L"Prior analysis maps the reset call/result branch near RVA 0x0042A386. Unresolved: The device state, reset preconditions, resource ownership and correct retry policy are unproven.", nullptr},
+        L"Reset is confirmed at RVA 0x0042A386. The unforced DEVICELOST state bypasses it; an explicit reset request overrides the state dispatch. Unresolved: The original device state, resource ownership and safe retry policy are unproven.", nullptr},
     // H11: see documented-exception-audit.md.
     {0x0042A386, L"Reset failed: Unknown", L"Direct3D", L"Deferred", L"Medium", L"0x0042A386",
-        L"The reset error formatter is mapped, but this report only contains Unknown. Unresolved: The original numeric HRESULT is missing; it cannot be assumed to equal DEVICELOST or INVALIDCALL.", nullptr},
+        L"The Reset failure branch passes its result to dxerr9!DXGetErrorString9A and exits through local cleanup. Unresolved: Unknown does not preserve the numeric HRESULT and cannot be equated with DEVICELOST or INVALIDCALL.", nullptr},
     // H12: see documented-exception-audit.md.
     {0x0042A386, L"Reset failed: D3DERR_INVALIDCALL", L"Direct3D", L"Deferred", L"High", L"0x0042A386",
-        L"The mapped reset-result branch formats this reported HRESULT. Unresolved: The violated reset precondition is unknown; retained resources and invalid parameters have not been distinguished.", nullptr},
+        L"Release and restoration stages surround Reset; their local exception handlers can log and continue. Unresolved: Complete resource release, presentation parameters, thread identity and reentrancy are unproven; no specific INVALIDCALL cause is established.", nullptr},
     // H13: see documented-exception-audit.md.
     {0x0004DD85, L"Range-check error", L"Delphi runtime", L"Deferred", L"High", L"0x0004DD85",
         L"The exception catalog and explicit range-check raise path are mapped. Unresolved: The failing index/value and OMSI owner are absent. Suppressing this guard has no established valid result.", nullptr},
     // H14: see documented-exception-audit.md.
     {0x00429FD8, L"Direct3D device lost notification", L"Direct3D", L"Deferred", L"High", L"0x00429FD8",
-        L"RVA 0x00429FD8 is a logging/dispatch path for the device-lost message. Unresolved: The notification alone does not establish a fatal error or a defective recovery branch.", nullptr},
+        L"RVA 0x00429FD8 logs entry to DEVICENOTRESET recovery, also reachable via reset_graphic_device. Unresolved: The notification alone proves neither an actual device-loss result nor a fatal error or defective recovery branch.", nullptr},
     // H15: see documented-exception-audit.md.
     {0x00070890, L"Invalid bitmap", L"Graphics resources", L"Deferred", L"High", L"0x00070890",
         L"The bitmap-invalid helper is mapped. Unresolved: Invalid input, an allocation failure and invalid object state remain distinct possible causes; the loader is unknown.", nullptr},

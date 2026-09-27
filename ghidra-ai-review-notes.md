@@ -98,7 +98,7 @@ in the recovered field or object identity.
   a diagnostic context alone cannot justify suppressing the exception.
 - Match the original public fault to its executable build.
 
-Proceed to H10-H14 / Direct3D after recording these questions. No additional
+Proceed to H10-H12 and H14 / Direct3D after recording these questions. No additional
 game session is requested.
 
 ## Reproduction and Limits

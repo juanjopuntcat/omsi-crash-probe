@@ -10,7 +10,8 @@ No game launch is needed for the current queue.
   Situation-file write chain mapped; reported read from 0x28 remains unexplained.
 - [x] H21 / POI.GHAA - C: inspect the fault routine and recognized callers.
   Geometry/normal calculation identified; pointer lifetime remains unresolved.
-- [ ] H06 / RS.HumansOutside: establish null-entry semantics and loop obligations.
+- [x] H06 / RS.HumansOutside: inspect loop continuation and collection writers.
+  Advance/cleanup mapped; null semantics and insertion rollback remain unresolved.
 - [ ] H23 / World/UI: establish missing-child semantics and string/UI invariants.
 - [ ] H05 / AI cleanup: resolve the global owner and exact cleanup continuations.
 - [ ] H10-H14 / Direct3D: reconstruct lost/reset state and resource lifecycle.
@@ -22,6 +23,8 @@ No game launch is needed for the current queue.
   local direct CALL and serialization chain before choosing any candidate change.
 - [ ] H21: identify the +0xA0 owner, field writers, lifetime and synchronization;
   prove lock/unlock and output obligations before proposing recovery behavior.
+- [ ] H06: prove null-entry validity, insertion failure rollback, object lifetime
+  and mutation ordering. Resolve the virtual call and match the public build.
 
 ## Integration
 
@@ -30,6 +33,16 @@ No game launch is needed for the current queue.
 - [x] Reproduce the focused export: all ten decompilations completed.
 - [x] Compile the updated x86 GUI without warnings.
 - [x] Review this iteration's diff for publication; commits are tracked in Git.
+
+### H06 Iteration
+
+- [x] Record the pass in `ghidra-humans-review-notes.md`, update the catalog and
+  candidate, and correct older overconfident null-guard recommendations.
+- [x] Reproduce the focused Ghidra and hash-checked linear exports: seven
+  decompilations completed; two missing functions explicitly recorded.
+- [x] Compile the updated x86 GUI without warnings and validate the unchanged
+  empty manifest. No patch-engine changes or game runtime tests in this pass.
+- [x] Review the diff for publication.
 
 Any unresolved doubt keeps the affected case deferred. Move to the next case
 after recording the evidence and what would be needed to reopen it.

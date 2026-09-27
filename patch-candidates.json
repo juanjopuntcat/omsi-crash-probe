@@ -9,11 +9,12 @@
       "knownFileOffset": "0x002EF103",
       "confidence": "high",
       "state": "deferred-uncertainty",
-      "finding": "A list lookup can return null before the engine reads object field +0x5BC; the existing predicate-failure path continues at RVA 0x002EFEFC.",
-      "nextStep": "Resolve whether a null entry is valid and skippable, prove the complete loop invariants and continuation, and verify the reported build before designing replacement code.",
+      "finding": "The loop reads element field +0x5BC. The existing predicate-failure target at RVA 0x002EFEFC increments the index and decrements the initial remaining count. Identified writers compact removals and grow the array before storing a new object.",
+      "nextStep": "Audit insertion rollback, null-entry validity, object lifetime and mutation ordering; match the reported build before proposing recovery. See ghidra-humans-review-notes.md. Continue with H23 while these questions remain deferred.",
       "uncertainties": [
         "The null entry may indicate broken ownership rather than an optional human.",
-        "The complete state and cleanup obligations at RVA 0x002EFEFC remain unproven."
+        "The normal advance and cleanup path is mapped, but skipping an element has no established semantic contract.",
+        "Growth before initialization is observed; a surviving null slot after failure and visibility to the loop are hypotheses, not proven causes."
       ]
     },
     {

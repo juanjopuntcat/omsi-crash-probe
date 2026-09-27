@@ -35,7 +35,7 @@ inline constexpr std::array<BugEntry, 42> kBugs = {{
         L"Prior disassembly reads [head+0x20] after a global dereference; a branch reaches RVA 0x0042AE5D. Unresolved: The owner's lifetime and null-state contract are unproven. The car log pointer at 0x0042AE2C precedes that target; calling the target the car-cleanup entry was unjustified.", "omsi-ai-cleanup-null-list-head"},
     // H06: see documented-exception-audit.md.
     {0x002EFD03, L"RS.HumansOutside null list entry", L"Access violation", L"Deferred", L"High", L"0x002EFD03",
-        L"Prior disassembly reads [EAX+0x5BC] after selecting a list entry. Zero EAX explains the reported access on a matching build. Unresolved: It remains unproven that null is a valid skippable entry rather than broken ownership. Complete loop invariants and the continuation at 0x002EFEFC are unresolved.", "omsi-humans-outside-null-entry"},
+        L"The loop reads [EAX+0x5BC] from an array element; zero EAX explains the reported read on a matching build. RVA 0x002EFEFC advances the index and remaining count. Writers compact removed entries and grow the array before storing a new object. Unresolved: Null-entry validity, insertion rollback, lifetime and mutation ordering are unproven. A local null skip would not repair collection ownership.", "omsi-humans-outside-null-entry"},
     // H07: see documented-exception-audit.md.
     {0x00006E6C, L"visu drivers translate 2 AV", L"Delphi runtime", L"Deferred", L"High", L"0x00006E6C",
         L"Ghidra confirms MOV EAX,[EAX] inside the shared helper at RVA 0x00006E68. Unresolved: The originating object and caller are unknown; the context literal was not found by the focused string pass.", nullptr},

@@ -124,9 +124,9 @@ Reported:
 
 > Zugriffsverletzung bei Addresse 006EFD03 in Modul 'Omsi.exe'. Lesen von Adresse 000005BC: RS.HumansOutside
 
-Evidence: Prior disassembly reads [EAX+0x5BC] after selecting a list entry. Zero EAX explains the reported access on a matching build.
+Evidence: The loop reads [EAX+0x5BC] after selecting an array element. Zero EAX explains the reported access on a matching build. The continuation at RVA 0x002EFEFC increments the index and decrements the initial remaining count; normal exit runs local-string cleanup. A caller's handler supplies the RS.HumansOutside context. Identified writers compact removed entries and grow the array before storing a new object. See `ghidra-humans-review-notes.md`.
 
-Unresolved: It remains unproven that null is a valid skippable entry rather than broken ownership. Complete loop invariants and the continuation at 0x002EFEFC are unresolved.
+Unresolved: Null-entry validity, insertion failure rollback, object lifetime and mutation ordering are unproven. Growth-before-initialization is an observed concern, not proof of a surviving null slot or the public error's cause. The virtual call and nested-object obligations are not fully resolved. A local null skip would not repair collection ownership.
 
 Decision: **Deferred; no approved fix.**
 

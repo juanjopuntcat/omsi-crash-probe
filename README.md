@@ -308,6 +308,11 @@ Audit is the default mode. Applying a future entry requires an approved SHA-256,
 matching PE identity, exact file offset, and exact original bytes. See
 `patching-design.md` and `ghidra-public-access-violation-notes.md`.
 
+`documented-exception-audit.md` reconciles all 39 reported signatures with
+the GUI, alongside three additional diagnostic families. Every entry records
+the evidence and its unresolved questions. All 42 are deferred; evidence
+confidence is not confidence that a proposed fix is correct.
+
 `patch-candidates.json` is a separate, non-applicable research catalog. The
 planned native Windows interface is described in `gui-design.md`; it will use
 the same guarded core rather than implementing binary writes in the UI.
@@ -372,7 +377,8 @@ The native manifest reader now validates schema version 1 with
 duplicate IDs or RVAs, malformed hexadecimal values, and invalid byte
 sequences. It selects a patch only when SHA-256, PE timestamp, and image size
 all match. The
-GUI binds entries to documented bugs by RVA, audits each target, and distinguishes
+GUI binds entries by explicit patch ID, target name and nonzero RVA, audits each
+target, and distinguishes
 available, applied, and incompatible fixes. Apply and Rollback require explicit
 confirmation and are blocked while OMSI is running. They remain disabled while
 the committed manifest is empty.

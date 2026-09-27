@@ -42,7 +42,7 @@ PowerShell transport remains useful for development, CI, and recovery.
 ## Implemented native patch manager
 
 Version `0.1.0.0` implements the native Win32 shell, executable selector, PE
-identity and LAA inspection, known-profile recognition, and a dense list of 17
+identity and LAA inspection, known-profile recognition, and a dense list of 42
 documented bug families. Validated manifest entries bind to rows by unique RVA.
 The GUI classifies them as available, applied, or incompatible and exposes one
 confirmed Apply or Rollback operation at a time. It blocks mutation while OMSI

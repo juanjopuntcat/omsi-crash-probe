@@ -8,9 +8,13 @@
       "faultRva": "0x002EFD03",
       "knownFileOffset": "0x002EF103",
       "confidence": "high",
-      "state": "trampoline-design",
+      "state": "deferred-uncertainty",
       "finding": "A list lookup can return null before the engine reads object field +0x5BC; the existing predicate-failure path continues at RVA 0x002EFEFC.",
-      "nextStep": "Design a null guard that reaches the existing next-entry path while preserving the loop's registers and flags."
+      "nextStep": "Resolve whether a null entry is valid and skippable, prove the complete loop invariants and continuation, and verify the reported build before designing replacement code.",
+      "uncertainties": [
+        "The null entry may indicate broken ownership rather than an optional human.",
+        "The complete state and cleanup obligations at RVA 0x002EFEFC remain unproven."
+      ]
     },
     {
       "id": "omsi-world-ui-null-subobject",
@@ -19,9 +23,13 @@
       "faultRva": "0x00428140",
       "knownFileOffset": "0x00427540",
       "confidence": "high",
-      "state": "trampoline-design",
+      "state": "deferred-uncertainty",
       "finding": "The +0x5C subobject can be null while its +0x1F0 string is copied into a UI control.",
-      "nextStep": "Design and offline-test a trampoline that supplies an empty Delphi string without skipping later parent-object UI updates."
+      "nextStep": "Prove that a missing child is an allowed state and that an empty Delphi string preserves ownership and all later UI invariants.",
+      "uncertainties": [
+        "Empty-string substitution is a proposed behavior, not a recovered contract.",
+        "The lifetime and consistency of the parent and child objects are unresolved."
+      ]
     },
     {
       "id": "omsi-ai-cleanup-null-list-head",
@@ -30,9 +38,13 @@
       "faultRva": "0x0042ADE3",
       "knownFileOffset": "0x0042A1E3",
       "confidence": "medium-high",
-      "state": "owner-lifecycle-analysis",
-      "finding": "AI cleanup dereferences a global list head before comparing its +0x20 state; the existing less-than-state branch skips to car cleanup at RVA 0x0042AE5D.",
-      "nextStep": "Resolve the global owner's lifecycle and verify that a null head may safely use the existing car-cleanup continuation."
+      "state": "deferred-uncertainty",
+      "finding": "AI cleanup dereferences a global head before comparing its +0x20 state; a branch reaches RVA 0x0042AE5D, whose complete semantic role is unresolved.",
+      "nextStep": "Resolve the global owner's lifecycle, null-state contract and the work bypassed by the branch before choosing any continuation.",
+      "uncertainties": [
+        "The car-cleanup log pointer at RVA 0x0042AE2C precedes the proposed target; the target is not proven to start car cleanup.",
+        "A null head has not been shown to mean that cleanup can safely be skipped."
+      ]
     }
   ]
 }

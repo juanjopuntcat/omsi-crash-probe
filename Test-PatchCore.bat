@@ -24,8 +24,12 @@ if not exist "%TEST_EXE%" (
 )
 
 echo Running native patch core tests...
+rem Isolate execution from the game's working directory as well as its binaries.
+pushd "%TEST_DIR%"
+if errorlevel 1 exit /b 1
 "%TEST_EXE%"
 set "TEST_RESULT=%ERRORLEVEL%"
+popd
 echo Native patch core test exit code: %TEST_RESULT%
 rmdir /s /q "%TEST_DIR%" >nul 2>nul
 exit /b %TEST_RESULT%

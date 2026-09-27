@@ -1,5 +1,11 @@
 # Public access-violation address analysis
 
+The 2026-09-27 review in [documented-exception-audit.md](documented-exception-audit.md)
+supersedes the patch-candidate judgments below. All candidates are deferred;
+public reports lack executable hashes, and the correct recovery semantics
+remain unresolved. A RET does not prove damaged return state, and the clean
+Ghidra listing does not yet decode RVA 0x00429C09 as an instruction.
+
 These notes correlate public OMSI error addresses with the locally analysed
 32-bit executable. Absolute addresses assume image base `0x00400000`. They are
 diagnostic evidence, not permission to patch an arbitrary OMSI build.

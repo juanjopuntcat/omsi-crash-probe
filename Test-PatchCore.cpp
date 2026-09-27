@@ -1,5 +1,6 @@
 #include "PatchCore.h"
 #include "PatchManifest.h"
+#include "BugCatalog.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -190,6 +191,32 @@ int main() {
     ok &= Check(!omsi_patch::ParsePatchManifest(
         duplicateRvaManifest, &manifest, &error), "duplicate patch RVA must fail closed");
     std::fprintf(stderr, "Manifest test: complete\n");
+
+    // Reports may share an RVA; only the explicitly bound bug can own a fix.
+    const BugEntry* humanBug = nullptr;
+    for (const auto& bug : kBugs) {
+        if (bug.patchId != nullptr &&
+            std::string(bug.patchId) == "omsi-humans-outside-null-entry") humanBug = &bug;
+    }
+    ok &= Check(humanBug != nullptr, "human research entry must be present");
+    if (humanBug != nullptr) {
+        ok &= Check(MatchesBugPatch(*humanBug, humanBug->patchId, humanBug->rva, L"Omsi.exe"),
+            "explicit ID, target and RVA must bind");
+        ok &= Check(!MatchesBugPatch(*humanBug, "unrelated-fix", humanBug->rva, L"Omsi.exe"),
+            "same RVA with another ID must not bind");
+        ok &= Check(!MatchesBugPatch(*humanBug, humanBug->patchId, humanBug->rva, L"d3d9.dll"),
+            "same ID and RVA in another module must not bind");
+        ok &= Check(!MatchesBugPatch(*humanBug, humanBug->patchId, humanBug->rva + 1, L"Omsi.exe"),
+            "wrong RVA must not bind");
+        BugEntry contextAlias = *humanBug;
+        contextAlias.patchId = nullptr;
+        ok &= Check(!MatchesBugPatch(contextAlias, humanBug->patchId, humanBug->rva, L"Omsi.exe"),
+            "context-only row sharing an RVA must not bind");
+        contextAlias.patchId = humanBug->patchId;
+        contextAlias.rva = 0;
+        ok &= Check(!MatchesBugPatch(contextAlias, humanBug->patchId, 0, L"Omsi.exe"),
+            "unknown RVA must not bind");
+    }
 
     if (!ok) return 1;
     std::puts("All native patch core tests passed.");

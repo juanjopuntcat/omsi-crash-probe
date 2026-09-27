@@ -1,5 +1,10 @@
 # OMSI Bug Fixability Audit
 
+Historical 17-family audit. The complete 39-signature review plus three
+additional families is now in [documented-exception-audit.md](documented-exception-audit.md).
+Its uncertainty decisions supersede patch-readiness claims below. All entries,
+including the three former patch candidates, are deferred.
+
 This audit covers every bug currently shown by the GUI. It combines the clean
 Ghidra project, focused RVA exports, decompilation, Delphi resource records,
 import references, and linear x86 disassembly. OMSI was not launched and no
@@ -34,11 +39,11 @@ hash, offline apply, and rollback have all been verified.
 
 ## Current Patch Boundary
 
-Three bugs justify continued patch engineering: HumansOutside, World/UI, and
-AI cleanup. None is ready for release yet because all three require control
-flow beyond a same-length local byte replacement. The patch core therefore
-needs guarded multi-hunk/trampoline support before these candidates can become
-real fixes.
+HumansOutside, World/UI and AI cleanup remain research hypotheses. The missing
+proof is semantic, not merely a limitation of the patch transport. A trampoline
+or successful offline apply/rollback cannot establish whether skipping a null
+entry or substituting an empty string is valid. Resolve the uncertainties in
+the complete audit before doing further patch engineering for these cases.
 
 The remaining bugs still matter, but most should produce owner-specific fixes,
 resource-policy mitigations, or better diagnostics. Patching their shared

@@ -23,7 +23,7 @@ inline constexpr std::array<BugEntry, 42> kBugs = {{
         L"The OMSI WAV/DirectSound loader is mapped at RVA 0x00405D60 (context only). Unresolved: The reported DLL build, load base, registers and caller are unknown; the DLL address cannot be mapped to this OMSI RVA.", nullptr},
     // H02: see documented-exception-audit.md.
     {0x002421CE, L"Omsi AV at 006421CE", L"Access violation", L"Deferred", L"High", L"0x002421CE",
-        L"Ghidra decodes CALL 0x00641BEC in FUN_00641C38 at the reported local-build address. Unresolved: The CALL itself does not explain a read from 0x28. The original build, fault context and callee contract are unresolved.", nullptr},
+        L"The CALL at 006421CE reaches a nested line writer in situation-file serialization; its string and destination context are traced. Unresolved: The reported read from 0x28 still does not match the local instruction path. Original build and fault registers are missing.", nullptr},
     // H03: see documented-exception-audit.md.
     {0x00024F68, L"Invalid floating-point value", L"Parser", L"Deferred", L"High", L"0x00024F68",
         L"The shared text-to-float parser has numerous loader callers. Unresolved: The token, locale, field contract and owning loader are missing; a default value has no justified semantics.", nullptr},
@@ -80,7 +80,7 @@ inline constexpr std::array<BugEntry, 42> kBugs = {{
         L"The generic floating-point exception path is mapped. Unresolved: The originating arithmetic operation and a valid zero-denominator policy are unknown.", nullptr},
     // H21: see documented-exception-audit.md.
     {0x003C400E, L"POI.GHAA - C access violation", L"Access violation", L"Deferred", L"High", L"0x003C400E",
-        L"Ghidra confirms MOV EAX,[EAX] in FUN_007C3FA8. The POI.GHAA - C log pointer is separately at RVA 0x003AEEDC. Unresolved: The diagnostic context is not the fault instruction. The selected object's ownership, validity and safe fallback are unresolved.", nullptr},
+        L"A triangle-normal routine reloads owner+0xA0 after a mesh-buffer call and dereferences it at 007C400E. Lock results are unchecked. Unresolved: Pointer lifetime, lock cleanup and caller output validity are unproven; a null-skip is not justified.", nullptr},
     // H22: see documented-exception-audit.md.
     {0x000B57F4, L"List index exceeds maximum", L"Delphi runtime", L"Deferred", L"High", L"0x000B57F4",
         L"The shared list-error machinery is mapped. Unresolved: The list owner, index and expected behavior for a missing element are absent.", nullptr},

@@ -71,9 +71,14 @@ Reported:
 
 > Zugriffsverletzung bei Addresse 006421CE in Modul 'Omsi.exe'. Lesen von Adresse 00000028.
 
-Evidence: Ghidra decodes CALL 0x00641BEC in FUN_00641C38 at the reported local-build address.
+Evidence: The direct CALL reaches a nested line writer in a situation-file
+serialization callback. The source string, parent-frame link and file-record
+destination have been traced through the lower write helper. See
+[the owner review](ghidra-owner-review-notes.md#h02-006421ce-read-from-00000028).
 
-Unresolved: The CALL itself does not explain a read from 0x28. The original build, fault context and callee contract are unresolved.
+Unresolved: The reported read from 0x28 still does not match the identified
+local instruction path. The original build and fault registers are missing;
+dropping a serialized line has no established recovery contract.
 
 Decision: **Deferred; no approved fix.**
 
@@ -299,9 +304,15 @@ Reported:
 
 > Zugriffsverletzung bei Addresse 007C400E in Modul 'Omsi.exe'. Lesen von Adresse 00000000: POI.GHAA - C ({vehiclepath})
 
-Evidence: Ghidra confirms MOV EAX,[EAX] in FUN_007C3FA8. The POI.GHAA - C log pointer is separately at RVA 0x003AEEDC.
+Evidence: The fault occurs in a triangle-normal calculation after reloading
+the interface at owner+0xA0 following a mesh-buffer call. Earlier null checks
+exist, and lock-like call results are unchecked. Three direct caller sites
+consume the resulting vector. The POI.GHAA - C log pointer remains separately
+at RVA 0x003AEEDC. See [the owner review](ghidra-owner-review-notes.md#h21-poighaa---c--007c400e).
 
-Unresolved: The diagnostic context is not the fault instruction. The selected object's ownership, validity and safe fallback are unresolved.
+Unresolved: The diagnostic context is not the fault instruction. The field's
+ownership, writers and lifetime remain unresolved, as do lock cleanup and a
+valid output contract for callers. Skipping the calculation is not justified.
 
 Decision: **Deferred; no approved fix.**
 

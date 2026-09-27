@@ -313,6 +313,10 @@ the GUI, alongside three additional diagnostic families. Every entry records
 the evidence and its unresolved questions. All 42 are deferred; evidence
 confidence is not confidence that a proposed fix is correct.
 
+`research-todo.md` tracks the next static passes and their unresolved questions.
+`ghidra-owner-review-notes.md` follows the situation-file write chain for
+006421CE and the geometry routine behind the POI.GHAA - C report.
+
 `patch-candidates.json` is a separate, non-applicable research catalog. The
 planned native Windows interface is described in `gui-design.md`; it will use
 the same guarded core rather than implementing binary writes in the UI.

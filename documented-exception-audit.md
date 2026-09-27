@@ -328,15 +328,15 @@ Unresolved: The list owner, index and expected behavior for a missing element ar
 
 Decision: **Deferred; no approved fix.**
 
-### H23: World/UI missing text subobject
+### H23: World/UI missing numeric-field owner
 
 Reported:
 
 > Zugriffsverletzung bei Addresse 00828140 in Modul 'Omsi.exe'. Lesen von Adresse 000001F0.
 
-Evidence: Prior Ghidra analysis maps the +0x100 / +0x5C / +0x1F0 object chain.
+Evidence: The +0x100 / +0x5C chain leads to a signed integer at child+0x1F0, not a string field. The value is formatted as decimal text by RVA 0x00022180 and displayed through a UI control. Zero would display `0`, not blank text. Selection lookup checks parent membership, not child validity. Local string initialization and cleanup are mapped. See `ghidra-world-review-notes.md`.
 
-Unresolved: A null child explains this access on a matching build; an empty Delphi string is still an unproven fallback with unresolved ownership and later UI invariants.
+Unresolved: A null child explains the read on a matching build, but the number's meaning, child lifetime, UI callbacks and recovery-state obligations are unproven. The EBX+0x8FC state byte is reset before, not within, local-string cleanup. Neither zero, empty text nor the existing no-selection branch is an approved fallback. The earlier string-copy interpretation is withdrawn.
 
 Decision: **Deferred; no approved fix.**
 

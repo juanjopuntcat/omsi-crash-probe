@@ -12,7 +12,8 @@ No game launch is needed for the current queue.
   Geometry/normal calculation identified; pointer lifetime remains unresolved.
 - [x] H06 / RS.HumansOutside: inspect loop continuation and collection writers.
   Advance/cleanup mapped; null semantics and insertion rollback remain unresolved.
-- [ ] H23 / World/UI: establish missing-child semantics and string/UI invariants.
+- [x] H23 / World/UI: inspect missing-child semantics and string/UI invariants.
+  Numeric-to-text conversion identified; field meaning and UI recovery unresolved.
 - [ ] H05 / AI cleanup: resolve the global owner and exact cleanup continuations.
 - [ ] H10-H14 / Direct3D: reconstruct lost/reset state and resource lifecycle.
 - [ ] External modules: consolidate required hashes, load bases and fault contexts.
@@ -25,6 +26,8 @@ No game launch is needed for the current queue.
   prove lock/unlock and output obligations before proposing recovery behavior.
 - [ ] H06: prove null-entry validity, insertion failure rollback, object lifetime
   and mutation ordering. Resolve the virtual call and match the public build.
+- [ ] H23: resolve child+0x1F0 meaning, +0x5C lifetime, callbacks and +0x8FC
+  state recovery. No evidence yet supports blank text, zero or no-selection fallback.
 
 ## Integration
 
@@ -40,6 +43,15 @@ No game launch is needed for the current queue.
   candidate, and correct older overconfident null-guard recommendations.
 - [x] Reproduce the focused Ghidra and hash-checked linear exports: seven
   decompilations completed; two missing functions explicitly recorded.
+- [x] Compile the updated x86 GUI without warnings and validate the unchanged
+  empty manifest. No patch-engine changes or game runtime tests in this pass.
+- [x] Review the diff for publication.
+
+### H23 Iteration
+
+- [x] Record the pass in `ghidra-world-review-notes.md`, correct the numeric
+  field interpretation and withdraw older empty-string patch recommendations.
+- [x] Reproduce the focused export: all nine decompilations completed.
 - [x] Compile the updated x86 GUI without warnings and validate the unchanged
   empty manifest. No patch-engine changes or game runtime tests in this pass.
 - [x] Review the diff for publication.

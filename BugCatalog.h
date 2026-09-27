@@ -85,8 +85,8 @@ inline constexpr std::array<BugEntry, 42> kBugs = {{
     {0x000B57F4, L"List index exceeds maximum", L"Delphi runtime", L"Deferred", L"High", L"0x000B57F4",
         L"The shared list-error machinery is mapped. Unresolved: The list owner, index and expected behavior for a missing element are absent.", nullptr},
     // H23: see documented-exception-audit.md.
-    {0x00428140, L"World/UI missing text subobject", L"Access violation", L"Deferred", L"High", L"0x00428140",
-        L"Prior Ghidra analysis maps the +0x100 / +0x5C / +0x1F0 object chain. Unresolved: A null child explains this access on a matching build; an empty Delphi string is still an unproven fallback with unresolved ownership and later UI invariants.", "omsi-world-ui-null-subobject"},
+    {0x00428140, L"World/UI missing numeric-field owner", L"Access violation", L"Deferred", L"High", L"0x00428140",
+        L"The +0x100 / +0x5C chain leads to a signed integer at child+0x1F0, formatted as decimal text for a UI control. Zero would display 0, not blank text. Selection lookup checks parent membership, not child validity. Unresolved: The number's meaning, child lifetime, UI callbacks and recovery-state obligations are unproven; neither zero nor empty text is an approved fallback.", "omsi-world-ui-null-subobject"},
     // H24: see documented-exception-audit.md.
     {0x00000000, L"T.PlugInRefrVars zero-address AV", L"Plugins", L"Deferred", L"Medium", L"Unresolved",
         L"Ghidra finds the context literal at data RVA 0x002F5F2C and a pointer at 0x002F4F1D. Unresolved: A null callback is only a hypothesis. Address zero is not a module RVA; the callback contract, plugin and stack are unknown.", nullptr},

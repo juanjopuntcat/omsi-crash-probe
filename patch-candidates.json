@@ -19,17 +19,18 @@
     },
     {
       "id": "omsi-world-ui-null-subobject",
-      "title": "World/UI missing text subobject",
+      "title": "World/UI missing numeric-field owner",
       "target": "Omsi.exe",
       "faultRva": "0x00428140",
       "knownFileOffset": "0x00427540",
       "confidence": "high",
       "state": "deferred-uncertainty",
-      "finding": "The +0x5C subobject can be null while its +0x1F0 string is copied into a UI control.",
-      "nextStep": "Prove that a missing child is an allowed state and that an empty Delphi string preserves ownership and all later UI invariants.",
+      "finding": "The +0x5C child supplies a signed integer at +0x1F0, formatted as decimal text for a UI control. Selection lookup validates parent membership, not child validity. Zero would display 0 rather than blank text.",
+      "nextStep": "Resolve the numeric field's meaning, child lifetime, UI callbacks and state-byte recovery before selecting any missing-value policy. See ghidra-world-review-notes.md. Continue with H05 while these questions remain deferred.",
       "uncertainties": [
-        "Empty-string substitution is a proposed behavior, not a recovered contract.",
-        "The lifetime and consistency of the parent and child objects are unresolved."
+        "The earlier string-field interpretation was incorrect; neither empty text nor numeric zero is a recovered fallback contract.",
+        "The lifetime and consistency of the parent and child across control calls are unresolved.",
+        "Local string cleanup does not establish UI-state recovery; the +0x8FC flag and callback obligations need review."
       ]
     },
     {

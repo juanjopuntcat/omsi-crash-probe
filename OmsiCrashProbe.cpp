@@ -865,7 +865,7 @@ static const KnownOmsiRva kKnownOmsiRvas[] = {
     {0x00428132, 0x00428146, "World/UI deep state null path", "Dereferences global state through +0x100 and +0x5C before reading +0x1F0; the public AV at 0x1F0 indicates a null intermediate object.", true},
     {0x00429FD8, 0x0042A412, "Direct3D device lost/reset path", "Logs device lost/resetted and formats reset failures through the Direct9 error formatter.", false},
     {0x0042AD90, 0x0042ADB0, "P.KillNotNeededBuses checkpoint", "AI bus cleanup checkpoint that surfaces memory/resource failures during removal of unneeded buses.", true},
-    {0x0042ADDC, 0x0042ADE7, "AI cleanup list-head null path", "Loads a global list owner, dereferences its head, then reads +0x20 without a visible local null guard.", true},
+    {0x0042ADDC, 0x0042ADE7, "AI cleanup map-owner null path", "Loads the current map pointer and compares its +0x20 version field with 11; no local null-map guard is visible.", true},
     {0x0042AE20, 0x0042AE40, "P.KillNotNeededCars checkpoint", "AI car cleanup checkpoint that surfaces memory/resource failures during removal of unneeded cars.", true},
 };
 

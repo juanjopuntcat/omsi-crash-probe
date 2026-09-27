@@ -14,7 +14,9 @@ No game launch is needed for the current queue.
   Advance/cleanup mapped; null semantics and insertion rollback remain unresolved.
 - [x] H23 / World/UI: inspect missing-child semantics and string/UI invariants.
   Numeric-to-text conversion identified; field meaning and UI recovery unresolved.
-- [ ] H05 / AI cleanup: resolve the global owner and exact cleanup continuations.
+- [x] H05 / AI cleanup: identify the global owner and local continuations.
+  Map/version field identified; outer lifecycle and recovery remain unresolved.
+  H29's P.KNNC.KM context also located; failing allocation still unknown.
 - [ ] H10-H14 / Direct3D: reconstruct lost/reset state and resource lifecycle.
 - [ ] External modules: consolidate required hashes, load bases and fault contexts.
 
@@ -28,6 +30,9 @@ No game launch is needed for the current queue.
   and mutation ordering. Resolve the virtual call and match the public build.
 - [ ] H23: resolve child+0x1F0 meaning, +0x5C lifetime, callbacks and +0x8FC
   state recovery. No evidence yet supports blank text, zero or no-selection fallback.
+- [ ] H05: prove map-lifetime ordering and outer-stage recovery. Stage 12 is
+  after car cleanup, not a demonstrated no-map continuation.
+- [ ] H29: identify the failing allocation within the located cleanup context.
 
 ## Integration
 
@@ -54,6 +59,16 @@ No game launch is needed for the current queue.
 - [x] Reproduce the focused export: all nine decompilations completed.
 - [x] Compile the updated x86 GUI without warnings and validate the unchanged
   empty manifest. No patch-engine changes or game runtime tests in this pass.
+- [x] Review the diff for publication.
+
+### H05 Iteration
+
+- [x] Record map/version and stage-flow corrections plus the H29 context in
+  `ghidra-ai-review-notes.md`; update GUI/probe labels and older recommendations.
+- [x] Reproduce focused Ghidra and hash-checked linear exports: five successful
+  decompilations and four explicit missing-function records.
+- [x] Compile GUI and probe without warnings; validate the unchanged empty
+  patch manifest. No game runtime tests or installed-probe replacement.
 - [x] Review the diff for publication.
 
 Any unresolved doubt keeps the affected case deferred. Move to the next case

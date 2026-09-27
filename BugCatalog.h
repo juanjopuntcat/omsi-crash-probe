@@ -31,8 +31,8 @@ inline constexpr std::array<BugEntry, 42> kBugs = {{
     {0x00000000, L"Unmapped AV at 3212AF30", L"Unknown module", L"Deferred", L"Low", L"Unresolved",
         L"The report supplies an instruction address and a read address only. Unresolved: The containing module, image base and binary version are absent. No local RVA can be assigned.", nullptr},
     // H05: see documented-exception-audit.md.
-    {0x0042ADE3, L"AI cleanup missing list head", L"Access violation", L"Deferred", L"High", L"0x0042ADE3",
-        L"Prior disassembly reads [head+0x20] after a global dereference; a branch reaches RVA 0x0042AE5D. Unresolved: The owner's lifetime and null-state contract are unproven. The car log pointer at 0x0042AE2C precedes that target; calling the target the car-cleanup entry was unjustified.", "omsi-ai-cleanup-null-list-head"},
+    {0x0042ADE3, L"AI cleanup missing map owner", L"Access violation", L"Deferred", L"High", L"0x0042ADE3",
+        L"The fault reads the current map's +0x20 version field, not a list head. Versions below 11 skip car cleanup to stage 12 at RVA 0x0042AE5D. Map loading and closing assign and clear this pointer. Unresolved: A null map's validity at this stage, outer recovery and later dependencies are unproven; skipping cleanup is not approved.", "omsi-ai-cleanup-null-list-head"},
     // H06: see documented-exception-audit.md.
     {0x002EFD03, L"RS.HumansOutside null list entry", L"Access violation", L"Deferred", L"High", L"0x002EFD03",
         L"The loop reads [EAX+0x5BC] from an array element; zero EAX explains the reported read on a matching build. RVA 0x002EFEFC advances the index and remaining count. Writers compact removed entries and grow the array before storing a new object. Unresolved: Null-entry validity, insertion rollback, lifetime and mutation ordering are unproven. A local null skip would not repair collection ownership.", "omsi-humans-outside-null-entry"},
@@ -101,10 +101,10 @@ inline constexpr std::array<BugEntry, 42> kBugs = {{
         L"Treating 00004911 as an RVA yields FILD qword ptr [EAX] in FUN_004048B4 in the local binary. Unresolved: That instruction is not a division. The report's address convention, build and original floating-point fault context are unverified.", nullptr},
     // H28: see documented-exception-audit.md.
     {0x00000000, L"Out of memory: P.KillNotNeededBuses", L"Memory / resources", L"Deferred", L"Medium", L"Unresolved",
-        L"Ghidra reconfirms the log pointer at RVA 0x0042ADA0. Unresolved: This is an OOM report, distinct from the head-null AV. The failing allocation and cleanup owner's full state are unknown.", nullptr},
+        L"Ghidra reconfirms the log pointer at RVA 0x0042ADA0. Unresolved: This is an OOM report, distinct from the null-map AV. The failing allocation and cleanup owner's full state are unknown.", nullptr},
     // H29: see documented-exception-audit.md.
-    {0x00000000, L"Out of memory: P.KNNC.KM", L"Memory / resources", L"Deferred", L"Low", L"Unresolved",
-        L"The context is recorded verbatim; the focused defined-string pass found no exact match. Unresolved: The label's owner and failing allocation remain unresolved. A negative string search does not prove absence from the executable.", nullptr},
+    {0x00000000, L"Out of memory: P.KNNC.KM", L"Memory / resources", L"Deferred", L"Medium", L"Context: 0x002FE8EF",
+        L"Raw UTF-16 at RVA 0x002FE9BC identifies the car-cleanup handler's context. The protected region includes a call to collection cleanup at 0x0034A630. Unresolved: The failing allocation and resource pressure are unknown; this context is not the fault RVA and does not prove a shared cause with H05.", nullptr},
     // H30: see documented-exception-audit.md.
     {0x00000000, L"Out of memory: CV.Calculate - I", L"Simulation", L"Deferred", L"Medium", L"Unresolved",
         L"Ghidra finds the context string at RVA 0x003D8DA0 and a log pointer at 0x003D60A4. Unresolved: The checkpoint is not an allocation site; the allocator, requested size and cause of failure are unknown.", nullptr},

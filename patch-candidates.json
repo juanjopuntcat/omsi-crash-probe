@@ -35,17 +35,18 @@
     },
     {
       "id": "omsi-ai-cleanup-null-list-head",
-      "title": "AI cleanup missing list head",
+      "title": "AI cleanup missing map owner",
       "target": "Omsi.exe",
       "faultRva": "0x0042ADE3",
       "knownFileOffset": "0x0042A1E3",
       "confidence": "medium-high",
       "state": "deferred-uncertainty",
-      "finding": "AI cleanup dereferences a global head before comparing its +0x20 state; a branch reaches RVA 0x0042AE5D, whose complete semantic role is unresolved.",
-      "nextStep": "Resolve the global owner's lifecycle, null-state contract and the work bypassed by the branch before choosing any continuation.",
+      "finding": "The fault compares the current map's +0x20 version field with 11. The less-than branch skips car cleanup and reaches stage 12 at RVA 0x0042AE5D. Map loading assigns the pointer and closing explicitly clears it.",
+      "nextStep": "Resolve outer processing conditions, map-lifetime ordering and later-stage dependencies before choosing null-map recovery. See ghidra-ai-review-notes.md; continue with Direct3D while these questions remain deferred.",
       "uncertainties": [
-        "The car-cleanup log pointer at RVA 0x0042AE2C precedes the proposed target; the target is not proven to start car cleanup.",
-        "A null head has not been shown to mean that cleanup can safely be skipped."
+        "The target is after car cleanup, not its entry; reaching stage 12 with no map is not proven safe.",
+        "A missing map is not an empty vehicle list or a map version below 11.",
+        "The map is cleared during closing, but the cause and validity of null at the reported processing stage remain unresolved."
       ]
     }
   ]

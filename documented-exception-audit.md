@@ -106,15 +106,15 @@ Unresolved: The containing module, image base and binary version are absent. No 
 
 Decision: **Deferred; no approved fix.**
 
-### H05: AI cleanup missing list head
+### H05: AI cleanup missing map owner
 
 Reported:
 
 > Zugriffsverletzung bei Addresse 0082ADE3 in Modul 'Omsi.exe'. Lesen von Adresse 00000020.
 
-Evidence: Prior disassembly reads [head+0x20] after a global dereference; a branch reaches RVA 0x0042AE5D.
+Evidence: The fault reads the current map's +0x20 version field. The map parser stores the `[version]` value there. A signed comparison below 11 skips car cleanup to stage 12 at RVA 0x0042AE5D. Map loading assigns the pointer and closing clears it. See `ghidra-ai-review-notes.md`.
 
-Unresolved: The owner's lifetime and null-state contract are unproven. The car log pointer at 0x0042AE2C precedes that target; calling the target the car-cleanup entry was unjustified.
+Unresolved: Outer processing conditions, map-lifetime ordering and later-stage dependencies are unproven. A missing map is not an empty vehicle list or a version below 11. The target is after car cleanup, not its entry; no null-skip behavior is approved.
 
 Decision: **Deferred; no approved fix.**
 
@@ -396,7 +396,7 @@ Reported:
 
 Evidence: Ghidra reconfirms the log pointer at RVA 0x0042ADA0.
 
-Unresolved: This is an OOM report, distinct from the head-null AV. The failing allocation and cleanup owner's full state are unknown.
+Unresolved: This is an OOM report, distinct from the null-map AV. The failing allocation and cleanup owner's full state are unknown.
 
 Decision: **Deferred; no approved fix.**
 
@@ -406,9 +406,9 @@ Reported:
 
 > Zu wenig Arbeitsspeicher: P.KNNC.KM
 
-Evidence: The context is recorded verbatim; the focused defined-string pass found no exact match.
+Evidence: Raw UTF-16 at data RVA 0x002FE9BC contains `: P.KNNC.KM`. The car-cleanup handler loads it at 0x002FE8EF; the protected region includes a call at 0x002FE8C7 to collection cleanup 0x0034A630. The defined-string pass missed this undefined data. See `ghidra-ai-review-notes.md`.
 
-Unresolved: The label's owner and failing allocation remain unresolved. A negative string search does not prove absence from the executable.
+Unresolved: The actual failing allocation and resource pressure remain unknown. The context covers a protected region, not one proven fault instruction; it does not establish a common cause with H05. Fault RVA remains unknown.
 
 Decision: **Deferred; no approved fix.**
 
@@ -560,9 +560,9 @@ Decision: **Deferred; no approved fix.**
 
 ## Corrections to Earlier Interpretations
 
-- H05: the car-cleanup message pointer is at RVA 0x0042AE2C, before the
-  proposed continuation 0x0042AE5D. The latter is not proven to be the entry to
-  car cleanup. A null head's meaning remains unresolved.
+- H05: the pointer is the current map, and +0x20 is its version field. The
+  continuation 0x0042AE5D is after car cleanup, not its entry. No null-map
+  recovery contract has been established.
 - H06 and H23: skipping a null human or supplying an empty UI string are
   hypotheses about intended behavior, not established fixes.
 - H21: POI.GHAA - C has a log pointer at 0x003AEEDC, separate from the public
